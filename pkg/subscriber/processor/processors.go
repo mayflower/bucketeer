@@ -36,6 +36,7 @@ const (
 	DemoOrganizationCreationNotifierName = "demoOrganizationCreationNotifier"
 	CacheRefresherName                   = "cacheRefresher"
 	PostHogEvaluationExporterName        = "postHogEvaluationExporter"
+	PostHogGoalExporterName              = "postHogGoalExporter"
 )
 
 var (

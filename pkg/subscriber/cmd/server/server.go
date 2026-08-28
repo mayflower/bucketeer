@@ -1139,16 +1139,27 @@ func (s *server) registerPubSubProcessorMap(
 		if err != nil {
 			return nil, nil, err
 		}
-		if postHogConfig.Enabled && postHogConfig.ExportEvaluations {
+		if postHogConfig.Enabled && (postHogConfig.ExportEvaluations || postHogConfig.ExportGoals) {
+			// One client per destination, shared by both exporters. Evaluations and
+			// goals can be enabled independently but reuse the same target and the
+			// same privacy policy.
 			postHogClient, err := posthogintegration.NewClient(postHogConfig, logger)
 			if err != nil {
 				return nil, nil, err
 			}
 			postHogClients = append(postHogClients, postHogClient)
-			processors.RegisterProcessor(
-				processor.PostHogEvaluationExporterName,
-				processor.NewPostHogEvaluationExporter(postHogClient, postHogConfig, logger),
-			)
+			if postHogConfig.ExportEvaluations {
+				processors.RegisterProcessor(
+					processor.PostHogEvaluationExporterName,
+					processor.NewPostHogEvaluationExporter(postHogClient, postHogConfig, logger),
+				)
+			}
+			if postHogConfig.ExportGoals {
+				processors.RegisterProcessor(
+					processor.PostHogGoalExporterName,
+					processor.NewPostHogGoalExporter(postHogClient, postHogConfig, logger),
+				)
+			}
 		}
 
 		processors.RegisterProcessor(
