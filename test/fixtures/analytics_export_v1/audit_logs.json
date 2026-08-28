@@ -1,0 +1,19 @@
+{
+  "auditLogs": [
+    {
+      "id": "auditlog-0000000000",
+      "timestamp": "1700000100",
+      "entityType": "FEATURE",
+      "entityId": "feature-alpha",
+      "type": "UNKNOWN",
+      "event": null,
+      "editor": null,
+      "options": null,
+      "localizedMessage": null,
+      "entityData": "",
+      "previousEntityData": ""
+    }
+  ],
+  "cursor": "",
+  "totalCount": "1"
+}

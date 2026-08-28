@@ -1,0 +1,32 @@
+{
+  "features": [
+    {
+      "id": "feature-beta",
+      "name": "Beta rollout",
+      "description": "",
+      "enabled": false,
+      "deleted": false,
+      "evaluationUndelayable": false,
+      "ttl": 0,
+      "version": 1,
+      "createdAt": "1700000200",
+      "updatedAt": "1700000300",
+      "variations": [],
+      "targets": [],
+      "rules": [],
+      "defaultStrategy": null,
+      "offVariation": "",
+      "tags": [],
+      "lastUsedInfo": null,
+      "maintainer": "",
+      "variationType": "STRING",
+      "archived": true,
+      "prerequisites": [],
+      "samplingSeed": "",
+      "autoOpsSummary": null,
+      "variationValueSchema": null
+    }
+  ],
+  "cursor": "",
+  "totalCount": "2"
+}

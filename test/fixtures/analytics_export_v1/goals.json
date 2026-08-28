@@ -1,0 +1,19 @@
+{
+  "goals": [
+    {
+      "id": "goal-checkout-complete",
+      "name": "Checkout complete",
+      "description": "Reached the order confirmation step",
+      "deleted": false,
+      "createdAt": "1700000000",
+      "updatedAt": "1700000100",
+      "isInUseStatus": false,
+      "archived": false,
+      "connectionType": "UNKNOWN",
+      "experiments": [],
+      "autoOpsRules": []
+    }
+  ],
+  "cursor": "",
+  "totalCount": "1"
+}

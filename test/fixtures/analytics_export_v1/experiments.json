@@ -1,0 +1,31 @@
+{
+  "experiments": [
+    {
+      "id": "experiment-alpha",
+      "goalId": "",
+      "featureId": "feature-alpha",
+      "featureVersion": 3,
+      "variations": [],
+      "startAt": "1700000000",
+      "stopAt": "1700600000",
+      "stopped": false,
+      "stoppedAt": "0",
+      "createdAt": "1700000000",
+      "updatedAt": "1700000100",
+      "deleted": false,
+      "goalIds": [
+        "goal-checkout-complete"
+      ],
+      "name": "Alpha checkout test",
+      "description": "",
+      "baseVariationId": "variation-off",
+      "status": "WAITING",
+      "maintainer": "",
+      "archived": false,
+      "goals": []
+    }
+  ],
+  "cursor": "",
+  "totalCount": "1",
+  "summary": null
+}
