@@ -38093,6 +38093,16 @@
                 "name": "features",
                 "type": "feature.Feature",
                 "is_repeated": true
+              },
+              {
+                "id": 2,
+                "name": "cursor",
+                "type": "string"
+              },
+              {
+                "id": 3,
+                "name": "total_count",
+                "type": "int64"
               }
             ]
           },
@@ -41441,6 +41451,60 @@
                 "type": "int64"
               }
             ]
+          },
+          {
+            "name": "GetExportContextRequest"
+          },
+          {
+            "name": "GetExportContextResponse",
+            "fields": [
+              {
+                "id": 1,
+                "name": "contract_version",
+                "type": "string"
+              },
+              {
+                "id": 2,
+                "name": "credential_scope",
+                "type": "string"
+              },
+              {
+                "id": 3,
+                "name": "organization_id",
+                "type": "string"
+              },
+              {
+                "id": 4,
+                "name": "project_id",
+                "type": "string"
+              },
+              {
+                "id": 5,
+                "name": "project_url_code",
+                "type": "string"
+              },
+              {
+                "id": 6,
+                "name": "environment_id",
+                "type": "string"
+              },
+              {
+                "id": 7,
+                "name": "environment_name",
+                "type": "string"
+              },
+              {
+                "id": 8,
+                "name": "environment_url_code",
+                "type": "string"
+              },
+              {
+                "id": 9,
+                "name": "capabilities",
+                "type": "string",
+                "is_repeated": true
+              }
+            ]
           }
         ],
         "services": [
@@ -44726,6 +44790,43 @@
                       {
                         "name": "operation_id",
                         "value": "api.gateway.v1.project.list"
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "name": "GetExportContext",
+                "in_type": "GetExportContextRequest",
+                "out_type": "GetExportContextResponse",
+                "options": [
+                  {
+                    "name": "(google.api.http)",
+                    "aggregated": [
+                      {
+                        "name": "get",
+                        "value": "/v1/export/context"
+                      }
+                    ]
+                  },
+                  {
+                    "name": "(grpc.gateway.protoc_gen_openapiv2.options.openapiv2_operation)",
+                    "aggregated": [
+                      {
+                        "name": "summary",
+                        "value": "Get export context"
+                      },
+                      {
+                        "name": "description",
+                        "value": "Get the non-secret organization, project and environment context bound to the calling API key, plus the export resources this server exposes. To call this API, you need a `READ` API Key role."
+                      },
+                      {
+                        "name": "tags",
+                        "value": "Export"
+                      },
+                      {
+                        "name": "operation_id",
+                        "value": "api.gateway.v1.export.context"
                       }
                     ]
                   }

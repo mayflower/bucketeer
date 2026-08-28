@@ -125,6 +125,8 @@ const (
 	methodGetProject         = "GetProject"
 	methodListProjects       = "ListProjects"
 
+	methodGetExportContext = "GetExportContext"
+
 	typeFeatures      = "Features"
 	typeSegmentUsers  = "SegmentUsers"
 	typeAPIKey        = "APIKey"
