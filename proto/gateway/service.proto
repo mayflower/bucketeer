@@ -237,6 +237,8 @@ message ListFeaturesRequest {
 
 message ListFeaturesResponse {
   repeated feature.Feature features = 1;
+  string cursor = 2;
+  int64 total_count = 3;
 }
 
 message UpdateFeatureRequest {
@@ -1122,6 +1124,25 @@ message ListProjectsResponse {
   repeated environment.Project projects = 1;
   string cursor = 2;
   int64 total_count = 3;
+}
+
+message GetExportContextRequest {}
+
+message GetExportContextResponse {
+  // Version of the analytics export contract this server implements.
+  string contract_version = 1;
+  // Scope the presented credential is bound to. Environment API keys report
+  // "environment".
+  string credential_scope = 2;
+  string organization_id = 3;
+  string project_id = 4;
+  string project_url_code = 5;
+  string environment_id = 6;
+  string environment_name = 7;
+  string environment_url_code = 8;
+  // Export resources this server exposes and tests. Connectors must not assume
+  // a resource is available unless it is listed here.
+  repeated string capabilities = 9;
 }
 
 option (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_swagger) = {
@@ -2197,6 +2218,18 @@ service Gateway {
       description: "List Projects. To call this API, you need a `READ` API Key role.",
       tags: "Project",
       operation_id: "api.gateway.v1.project.list"
+    };
+  }
+  rpc GetExportContext(GetExportContextRequest)
+      returns (GetExportContextResponse) {
+    option (google.api.http) = {
+      get: "/v1/export/context"
+    };
+    option (grpc.gateway.protoc_gen_openapiv2.options.openapiv2_operation) = {
+      summary: "Get export context",
+      description: "Get the non-secret organization, project and environment context bound to the calling API key, plus the export resources this server exposes. To call this API, you need a `READ` API Key role.",
+      tags: "Export",
+      operation_id: "api.gateway.v1.export.context"
     };
   }
 }

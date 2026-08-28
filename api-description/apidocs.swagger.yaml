@@ -2496,6 +2496,49 @@ paths:
           collectionFormat: multi
       tags:
         - Experiments
+  /v1/export/context:
+    get:
+      summary: Get export context
+      description: Get the non-secret organization, project and environment context bound to the calling API key, plus the export resources this server exposes. To call this API, you need a `READ` API Key role.
+      operationId: api.gateway.v1.export.context
+      responses:
+        "200":
+          description: A successful response.
+          schema:
+            $ref: '#/definitions/gatewayGetExportContextResponse'
+        "400":
+          description: Returned for bad requests that may have failed validation.
+          schema:
+            $ref: '#/definitions/googlerpcStatus'
+          examples:
+            application/json:
+              code: 3
+              details: []
+              message: invalid arguments error
+        "401":
+          description: Request could not be authenticated (authentication required).
+          schema:
+            $ref: '#/definitions/googlerpcStatus'
+          examples:
+            application/json:
+              code: 16
+              details: []
+              message: not authenticated
+        "403":
+          description: Request does not have permission to access the resource.
+          schema:
+            $ref: '#/definitions/googlerpcStatus'
+          examples:
+            application/json:
+              code: 7
+              details: []
+              message: not authorized
+        default:
+          description: An unexpected error response.
+          schema:
+            $ref: '#/definitions/googlerpcStatus'
+      tags:
+        - Export
   /v1/feature:
     get:
       summary: Get
@@ -6385,6 +6428,11 @@ definitions:
         items:
           type: object
           $ref: '#/definitions/featureFeature'
+      cursor:
+        type: string
+      totalCount:
+        type: string
+        format: int64
   bucketeergatewayListFlagTriggersResponse:
     type: object
     properties:
@@ -8279,6 +8327,36 @@ definitions:
         $ref: '#/definitions/featureUserEvaluations'
       userEvaluationsId:
         type: string
+  gatewayGetExportContextResponse:
+    type: object
+    properties:
+      contractVersion:
+        type: string
+        description: Version of the analytics export contract this server implements.
+      credentialScope:
+        type: string
+        description: |-
+          Scope the presented credential is bound to. Environment API keys report
+          "environment".
+      organizationId:
+        type: string
+      projectId:
+        type: string
+      projectUrlCode:
+        type: string
+      environmentId:
+        type: string
+      environmentName:
+        type: string
+      environmentUrlCode:
+        type: string
+      capabilities:
+        type: array
+        items:
+          type: string
+        description: |-
+          Export resources this server exposes and tests. Connectors must not assume
+          a resource is available unless it is listed here.
   gatewayGetFeatureFlagsRequest:
     type: object
     properties:

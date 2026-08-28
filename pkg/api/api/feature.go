@@ -188,8 +188,18 @@ func (s *grpcGatewayService) ListFeatures(
 	if err != nil {
 		return nil, err
 	}
+	if resp == nil {
+		s.logger.Error("Failed to list features: nil response",
+			log.FieldsFromIncomingContext(ctx).AddFields(
+				zap.String("environment_id", envAPIKey.Environment.Id),
+			)...,
+		)
+		return nil, errInternal
+	}
 	return &gwproto.ListFeaturesResponse{
-		Features: resp.Features,
+		Features:   resp.Features,
+		Cursor:     resp.Cursor,
+		TotalCount: resp.TotalCount,
 	}, nil
 }
 
