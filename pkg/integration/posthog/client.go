@@ -100,24 +100,51 @@ func NewClient(config *Config, logger *zap.Logger) (*Client, error) {
 	return &Client{sdk: sdk, tracker: tracker, config: config, logger: logger}, nil
 }
 
-// Deliver enqueues one capture and waits for its callback.
+// Pending delivery, returned by Enqueue so the caller can wait for it later.
+type PendingDelivery struct {
+	ch      <-chan DeliveryResult
+	release func()
+	// err is set when the SDK refused the event outright, in which case there is no
+	// callback to wait for.
+	err error
+}
+
+// Enqueue hands one capture to the SDK and returns a handle to its eventual callback.
 //
-// Enqueue returning nil means only that the SDK queued the event, so the wait is what
-// makes an ack meaningful. The returned error is classified by Classify to decide ack,
-// nack, or terminal drop.
-func (c *Client) Deliver(ctx context.Context, capture posthogsdk.Capture) error {
+// Separating enqueue from the wait is what lets a caller fill a batch: waiting per event
+// before enqueueing the next would leave the SDK's batch permanently under-filled, so
+// every upload would carry a single event and throughput would collapse to one event per
+// flush interval.
+func (c *Client) Enqueue(capture posthogsdk.Capture) *PendingDelivery {
 	// Registered before enqueueing: a fast callback must not arrive before there is
 	// anywhere to deliver it.
 	ch, release := c.tracker.Watch(capture.Uuid)
-	defer release()
-
 	if err := c.sdk.Enqueue(capture); err != nil {
-		return err
+		release()
+		return &PendingDelivery{err: err}
 	}
+	return &PendingDelivery{ch: ch, release: release}
+}
 
+// Wait blocks until the event's callback arrives or the delivery timeout expires.
+//
+// Enqueue returning nil means only that the SDK queued the event, so this wait is what
+// makes an ack meaningful. The returned error is classified by Classify to decide ack,
+// nack, or terminal drop.
+func (c *Client) Wait(ctx context.Context, pending *PendingDelivery) error {
+	if pending.err != nil {
+		return pending.err
+	}
+	defer pending.release()
 	waitCtx, cancel := context.WithTimeout(ctx, c.config.DeliveryTimeout())
 	defer cancel()
-	return Await(waitCtx, ch)
+	return Await(waitCtx, pending.ch)
+}
+
+// Deliver enqueues one capture and waits for it. Convenience for a single event; a
+// processor handling a stream should batch with Enqueue and Wait instead.
+func (c *Client) Deliver(ctx context.Context, capture posthogsdk.Capture) error {
+	return c.Wait(ctx, c.Enqueue(capture))
 }
 
 // Pending is the number of events awaiting a callback.

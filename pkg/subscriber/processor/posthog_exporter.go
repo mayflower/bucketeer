@@ -48,27 +48,61 @@ type postHogExporter struct {
 	logger   *zap.Logger
 }
 
+// pending pairs a broker message with the delivery it is waiting on, so each message can
+// be settled by its own outcome once the batch has been uploaded.
+type pending struct {
+	msg      *puller.Message
+	outer    *eventproto.Event
+	delivery *posthog.PendingDelivery
+	start    time.Time
+}
+
 // run is the processor loop. It performs no work on the evaluation or goal request path:
 // this runs in the subscriber, so a slow or unreachable PostHog delays export only.
+//
+// Messages are enqueued into the SDK up to the configured batch size before anything is
+// waited on. Waiting per event before enqueueing the next would leave every SDK batch
+// holding a single event, so each upload would cost a full flush interval and throughput
+// would collapse.
 func (e *postHogExporter) run(ctx context.Context, msgChan <-chan *puller.Message) error {
+	batch := make([]*pending, 0, e.config.BatchSize)
+	ticker := time.NewTicker(e.config.FlushInterval())
+	defer ticker.Stop()
+
 	for {
 		select {
 		case msg, ok := <-msgChan:
 			if !ok {
+				e.settle(ctx, batch)
 				e.logger.Info("Message channel closed, stopping")
 				return nil
 			}
-			e.handle(ctx, msg)
+			if p := e.enqueue(msg); p != nil {
+				batch = append(batch, p)
+			}
+			if len(batch) >= e.config.BatchSize {
+				e.settle(ctx, batch)
+				batch = batch[:0]
+			}
+		case <-ticker.C:
+			// A partial batch must not wait for more traffic that may never arrive.
+			if len(batch) > 0 {
+				e.settle(ctx, batch)
+				batch = batch[:0]
+			}
 		case <-ctx.Done():
-			// Shutdown: stop accepting new work. Anything already handed to us has
-			// been acked or nacked by handle, so nothing is silently acked.
+			// Shutdown: resolve what is already in flight, then stop. Nothing is
+			// silently acked, because settle acks only on a success callback.
+			e.settle(ctx, batch)
 			e.logger.Info("Context done, stopping")
 			return nil
 		}
 	}
 }
 
-func (e *postHogExporter) handle(ctx context.Context, msg *puller.Message) {
+// enqueue decodes one message and hands it to the SDK, returning nil when the message was
+// already settled (dropped) and so is not part of the batch.
+func (e *postHogExporter) enqueue(msg *puller.Message) *pending {
 	posthogReceivedCounter.WithLabelValues(e.eventType).Inc()
 
 	id := msg.Attributes["id"]
@@ -76,13 +110,13 @@ func (e *postHogExporter) handle(ctx context.Context, msg *puller.Message) {
 		// Without the outer id there is no stable UUID, so a retry could not dedupe.
 		msg.Ack()
 		posthogDroppedCounter.WithLabelValues(e.eventType, codes.MissingID.String()).Inc()
-		return
+		return nil
 	}
 
 	outer := &eventproto.Event{}
 	if err := proto.Unmarshal(msg.Data, outer); err != nil {
 		e.drop(msg, id, dropReasonMalformedOuter, err)
-		return
+		return nil
 	}
 
 	capture, err := e.mapEvent(outer)
@@ -92,45 +126,60 @@ func (e *postHogExporter) handle(ctx context.Context, msg *puller.Message) {
 			reason = dropReasonMissingDistinct
 		}
 		e.drop(msg, id, reason, err)
-		return
+		return nil
 	}
 
 	posthogEventLagHistogram.WithLabelValues(e.eventType).Observe(time.Since(capture.Timestamp).Seconds())
-
-	start := time.Now()
 	posthogEnqueuedCounter.WithLabelValues(e.eventType).Inc()
-	posthogInflightGauge.WithLabelValues(e.eventType).Set(float64(e.client.Pending()))
 
-	deliverErr := e.client.Deliver(ctx, capture)
-	posthogDeliveryLatencyHistogram.WithLabelValues(e.eventType).Observe(time.Since(start).Seconds())
-	posthogInflightGauge.WithLabelValues(e.eventType).Set(float64(e.client.Pending()))
-
-	switch posthog.Classify(deliverErr) {
-	case posthog.ClassificationDelivered:
-		// Ack only here: Enqueue returning nil is not delivery.
-		msg.Ack()
-		posthogDeliveredCounter.WithLabelValues(e.eventType).Inc()
-	case posthog.ClassificationTerminal:
-		// Redelivery cannot help, so free the subscription and record the loss.
-		msg.Ack()
-		posthogDroppedCounter.WithLabelValues(e.eventType, dropReasonTerminalDelivery).Inc()
-		e.logger.Error("Dropping event PostHog will never accept",
-			zap.String("eventId", outer.Id),
-			zap.String("environmentId", outer.EnvironmentId),
-			zap.Error(deliverErr),
-		)
-	default:
-		// Nack: the broker is the next retry layer. The UUID and timestamp are stable,
-		// so a redelivery is deduped rather than double counted.
-		msg.Nack()
-		posthogDeliveryFailedCounter.
-			WithLabelValues(e.eventType, string(posthog.ClassificationRetryable)).Inc()
-		e.logger.Warn("Retrying event after delivery failure",
-			zap.String("eventId", outer.Id),
-			zap.String("environmentId", outer.EnvironmentId),
-			zap.Error(deliverErr),
-		)
+	return &pending{
+		msg:      msg,
+		outer:    outer,
+		delivery: e.client.Enqueue(capture),
+		start:    time.Now(),
 	}
+}
+
+// settle waits for each enqueued event's callback and acks or nacks its message.
+func (e *postHogExporter) settle(ctx context.Context, batch []*pending) {
+	if len(batch) == 0 {
+		return
+	}
+	posthogInflightGauge.WithLabelValues(e.eventType).Set(float64(e.client.Pending()))
+
+	for _, p := range batch {
+		deliverErr := e.client.Wait(ctx, p.delivery)
+		posthogDeliveryLatencyHistogram.WithLabelValues(e.eventType).
+			Observe(time.Since(p.start).Seconds())
+
+		switch posthog.Classify(deliverErr) {
+		case posthog.ClassificationDelivered:
+			// Ack only here: Enqueue returning nil is not delivery.
+			p.msg.Ack()
+			posthogDeliveredCounter.WithLabelValues(e.eventType).Inc()
+		case posthog.ClassificationTerminal:
+			// Redelivery cannot help, so free the subscription and record the loss.
+			p.msg.Ack()
+			posthogDroppedCounter.WithLabelValues(e.eventType, dropReasonTerminalDelivery).Inc()
+			e.logger.Error("Dropping event PostHog will never accept",
+				zap.String("eventId", p.outer.Id),
+				zap.String("environmentId", p.outer.EnvironmentId),
+				zap.Error(deliverErr),
+			)
+		default:
+			// Nack: the broker is the next retry layer. The UUID and timestamp are
+			// stable, so a redelivery is deduped rather than double counted.
+			p.msg.Nack()
+			posthogDeliveryFailedCounter.
+				WithLabelValues(e.eventType, string(posthog.ClassificationRetryable)).Inc()
+			e.logger.Warn("Retrying event after delivery failure",
+				zap.String("eventId", p.outer.Id),
+				zap.String("environmentId", p.outer.EnvironmentId),
+				zap.Error(deliverErr),
+			)
+		}
+	}
+	posthogInflightGauge.WithLabelValues(e.eventType).Set(float64(e.client.Pending()))
 }
 
 func (e *postHogExporter) drop(msg *puller.Message, id, reason string, err error) {
