@@ -1,0 +1,47 @@
+{
+  "features": [
+    {
+      "id": "feature-alpha",
+      "name": "Alpha rollout",
+      "description": "",
+      "enabled": true,
+      "deleted": false,
+      "evaluationUndelayable": false,
+      "ttl": 0,
+      "version": 3,
+      "createdAt": "1700000000",
+      "updatedAt": "1700000100",
+      "variations": [
+        {
+          "id": "variation-on",
+          "value": "true",
+          "name": "On",
+          "description": ""
+        },
+        {
+          "id": "variation-off",
+          "value": "false",
+          "name": "Off",
+          "description": ""
+        }
+      ],
+      "targets": [],
+      "rules": [],
+      "defaultStrategy": null,
+      "offVariation": "variation-off",
+      "tags": [
+        "example"
+      ],
+      "lastUsedInfo": null,
+      "maintainer": "",
+      "variationType": "STRING",
+      "archived": false,
+      "prerequisites": [],
+      "samplingSeed": "",
+      "autoOpsSummary": null,
+      "variationValueSchema": null
+    }
+  ],
+  "cursor": "1",
+  "totalCount": "2"
+}

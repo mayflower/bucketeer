@@ -1,0 +1,18 @@
+{
+  "contractVersion": "1",
+  "credentialScope": "environment",
+  "organizationId": "org-0000000000",
+  "projectId": "prj-0000000000",
+  "projectUrlCode": "example-project",
+  "environmentId": "env-0000000000",
+  "environmentName": "Production",
+  "environmentUrlCode": "production",
+  "capabilities": [
+    "feature_flags",
+    "segments",
+    "experiments",
+    "goals",
+    "audit_logs",
+    "code_references"
+  ]
+}

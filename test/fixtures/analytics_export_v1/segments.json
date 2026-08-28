@@ -1,0 +1,21 @@
+{
+  "segments": [
+    {
+      "id": "segment-early-access",
+      "name": "Early access",
+      "description": "Accounts opted into early access",
+      "rules": [],
+      "createdAt": "1700000000",
+      "updatedAt": "1700000100",
+      "version": "0",
+      "deleted": false,
+      "includedUserCount": "12",
+      "excludedUserCount": "0",
+      "status": "INITIAL",
+      "isInUseStatus": false,
+      "features": []
+    }
+  ],
+  "cursor": "",
+  "totalCount": "1"
+}

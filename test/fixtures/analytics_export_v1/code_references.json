@@ -1,0 +1,26 @@
+{
+  "codeReferences": [
+    {
+      "id": "coderef-0000000000",
+      "featureId": "feature-alpha",
+      "filePath": "src/checkout/index.ts",
+      "lineNumber": 42,
+      "codeSnippet": "",
+      "contentHash": "",
+      "aliases": [],
+      "repositoryName": "example-app",
+      "repositoryOwner": "example-org",
+      "repositoryType": "REPOSITORY_TYPE_UNSPECIFIED",
+      "repositoryBranch": "main",
+      "commitHash": "",
+      "environmentId": "env-0000000000",
+      "createdAt": "1700000000",
+      "updatedAt": "1700000100",
+      "sourceUrl": "",
+      "branchUrl": "",
+      "fileExtension": ""
+    }
+  ],
+  "cursor": "",
+  "totalCount": "1"
+}

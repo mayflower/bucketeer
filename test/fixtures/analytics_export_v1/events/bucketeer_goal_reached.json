@@ -1,0 +1,24 @@
+{
+  "distinct_id": "user-0000000000",
+  "event": "bucketeer_goal_reached",
+  "properties": {
+    "$geoip_disable": true,
+    "$groups": {
+      "tenant": "tenant-0000000000"
+    },
+    "$process_person_profile": false,
+    "bucketeer_contract_version": "1",
+    "bucketeer_environment_id": "env-0000000000",
+    "bucketeer_event_id": "7c9e6679-7425-40de-944b-e07fc1f90ae7",
+    "bucketeer_goal_id": "goal-checkout-complete",
+    "bucketeer_goal_value": 42.5,
+    "bucketeer_metadata_region": "eu",
+    "bucketeer_sdk_version": "1.0.0",
+    "bucketeer_source_id": "GO_SERVER",
+    "bucketeer_tag": "web",
+    "bucketeer_user_plan": "pro",
+    "bucketeer_user_tenant_id": "tenant-0000000000"
+  },
+  "timestamp": "2023-11-14T22:21:40Z",
+  "uuid": "7c9e6679-7425-40de-944b-e07fc1f90ae7"
+}

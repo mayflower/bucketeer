@@ -206,6 +206,17 @@ build-go: $(GO_APP_BUILD_TARGETS)
 build-go-embed: build-web-console $(GO_APP_BUILD_TARGETS) clean-web-console
 
 # Make sure bucketeer-httpstan is already running. If not, run "make start-httpstan".
+.PHONY: smoke-posthog
+# Fast contract gate for the PostHog integration: fixture and golden checks plus the
+# processor smoke tests. Needs no network, no credential, and no running cluster.
+smoke-posthog:
+	TZ=UTC CGO_ENABLED=0 go test -count=1 \
+		-run 'TestAnalyticsExportFixtures|TestRuntimeEventGolden|TestGoldenFilesCarryNoUnallowlistedData|TestGrpcGetExportContext|TestGrpcListFeatures' \
+		./pkg/api/api/ ./pkg/integration/posthog/
+	TZ=UTC CGO_ENABLED=0 go test -count=1 \
+		-run 'TestAcks|TestNacks|TestGoal|TestDefaultPayload|TestPayloadNever|TestProcess' \
+		./pkg/subscriber/processor/
+
 .PHONY: test-go
 test-go:
 	TZ=UTC CGO_ENABLED=0 go run gotest.tools/gotestsum@$(GOTESTSUM_VERSION) \

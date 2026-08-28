@@ -169,3 +169,41 @@ now; it is not an exposure record.
   breaking and requires a new `contract_version`.
 - Privacy exclusions cannot narrow within a major version: a field listed above as excluded
   cannot start being exported in a `1.x` server.
+
+## Runtime event contract
+
+Two event names belong to this contract. Their property names are as stable as the
+warehouse field names above, because queries are written against them.
+
+| Event | Emitted for |
+|---|---|
+| `bucketeer_feature_evaluated` | One flag evaluation |
+| `bucketeer_goal_reached` | One goal conversion |
+
+Both preserve the Bucketeer outer event id as the analytics event UUID and the original
+event timestamp, so a redelivery is deduplicated rather than counted twice. Both set
+`$process_person_profile` false and `$geoip_disable` true, and neither creates a person or
+group profile.
+
+`bucketeer_feature_evaluated` also sets `$feature_flag` and `$feature_flag_response` for
+compatibility with flag-aware queries. The event keeps its own name: the assignment was
+made by Bucketeer, not by the analytics tool.
+
+## Checked-in fixtures
+
+[`test/fixtures/analytics_export_v1/`](../../test/fixtures/analytics_export_v1/) holds the
+canonical response shapes, and `events/` under it holds the two runtime events. They are
+generated from the server's own response types and the real event mapper, so they cannot
+drift from the implementation without failing a test.
+
+A connector keeps its own copy and compares against these. Run the whole gate with:
+
+```bash
+make smoke-posthog
+```
+
+It needs no network, no credential and no running cluster.
+
+Every value in those files is invented. Production and customer data must never be used
+as a fixture, even with names replaced.
+
