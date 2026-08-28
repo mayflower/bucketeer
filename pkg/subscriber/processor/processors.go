@@ -35,6 +35,7 @@ const (
 	SegmentUserPersisterName             = "segmentUserPersister"
 	DemoOrganizationCreationNotifierName = "demoOrganizationCreationNotifier"
 	CacheRefresherName                   = "cacheRefresher"
+	PostHogEvaluationExporterName        = "postHogEvaluationExporter"
 )
 
 var (

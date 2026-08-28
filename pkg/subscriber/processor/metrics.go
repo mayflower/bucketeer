@@ -106,4 +106,5 @@ func registerMetrics(r metrics.Registerer) {
 		subscriberHandledHistogram,
 		evaluationEventCounter,
 	)
+	registerPostHogExporterMetrics(r)
 }
