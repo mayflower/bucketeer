@@ -40,6 +40,14 @@ import (
 
 const postHogTestEventID = "3f6b0c6e-6d1f-4d5f-9f0a-3f6b0c6e6d1f"
 
+// handle enqueues and settles one message. Production batches instead, via the run loop;
+// this keeps a single-message assertion readable in tests.
+func (e *postHogExporter) handle(ctx context.Context, msg *puller.Message) {
+	if p := e.enqueue(msg); p != nil {
+		e.settle(ctx, []*pending{p})
+	}
+}
+
 // ackState records what the processor decided for one broker message.
 type ackState struct {
 	mu     sync.Mutex
