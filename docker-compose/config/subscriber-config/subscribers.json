@@ -152,5 +152,22 @@
     "pullerMaxOutstandingBytes": 1000000000,
     "maxMps": 50,
     "workerNum": 1
+  },
+  "postHogGoalExporter": {
+    "pubSubType": "redis-stream",
+    "redisServerName": "redis",
+    "redisAddr": "redis:6379",
+    "redisPoolSize": 10,
+    "redisMinIdle": 1,
+    "project": "bucketeer",
+    "redisPartitionCount": 16,
+    "redisMode": "auto",
+    "topic": "goal",
+    "subscription": "posthog-goal-exporter",
+    "pullerNumGoroutines": 5,
+    "pullerMaxOutstandingMessages": 1000,
+    "pullerMaxOutstandingBytes": 1000000000,
+    "maxMps": 50,
+    "workerNum": 1
   }
 }

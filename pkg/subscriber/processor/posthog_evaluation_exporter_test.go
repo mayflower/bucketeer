@@ -108,7 +108,7 @@ func newTestExporter(t *testing.T, handler http.HandlerFunc) (*postHogEvaluation
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = client.Close() })
 
-	return &postHogEvaluationExporter{client: client, config: config, logger: zap.NewNop()}, server
+	return NewPostHogEvaluationExporter(client, config, zap.NewNop()).(*postHogEvaluationExporter), server
 }
 
 func TestAcksOnlyAfterConfirmedDelivery(t *testing.T) {
