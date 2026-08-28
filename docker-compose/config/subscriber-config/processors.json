@@ -25,5 +25,27 @@
     "redisPartitionCount": 16,
     "redisMode": "auto",
     "project": "bucketeer-dev"
+  },
+  "postHogEvaluationExporter": {
+    "enabled": false,
+    "endpoint": "http://posthog-mock:8000",
+    "projectApiKeyFile": "/etc/bucketeer/posthog/project-api-key",
+    "allowInsecureEndpoint": true,
+    "captureMode": "legacy",
+    "exportEvaluations": true,
+    "exportGoals": false,
+    "batchSize": 100,
+    "flushIntervalSeconds": 5,
+    "deliveryTimeoutSeconds": 30,
+    "maxQueueSize": 10000,
+    "batchUploadTimeoutSeconds": 30,
+    "shutdownTimeoutSeconds": 15,
+    "privacy": {
+      "userAttributeAllowlist": [],
+      "metadataAllowlist": [],
+      "groupMappings": [],
+      "maxValueLength": 512,
+      "maxAttributes": 20
+    }
   }
-} 
+}

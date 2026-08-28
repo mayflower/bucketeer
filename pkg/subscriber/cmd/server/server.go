@@ -47,6 +47,7 @@ import (
 	featuremysql "github.com/bucketeer-io/bucketeer/v2/pkg/feature/storage/v2/mysql"
 	featurepostgres "github.com/bucketeer-io/bucketeer/v2/pkg/feature/storage/v2/postgres"
 	"github.com/bucketeer-io/bucketeer/v2/pkg/health"
+	posthogintegration "github.com/bucketeer-io/bucketeer/v2/pkg/integration/posthog"
 	"github.com/bucketeer-io/bucketeer/v2/pkg/locale"
 	"github.com/bucketeer-io/bucketeer/v2/pkg/metrics"
 	"github.com/bucketeer-io/bucketeer/v2/pkg/pubsub/factory"
@@ -1011,6 +1012,9 @@ func (s *server) registerPubSubProcessorMap(
 	processors := processor.NewPubSubProcessors(registerer)
 	// dwhCleanup closes any dedicated data-warehouse client created below.
 	var dwhCleanup func()
+	// PostHog SDK clients are owned here so the exporters can share one destination;
+	// they are flushed and closed by the returned cleanup, never by a processor.
+	var postHogClients []*posthogintegration.Client
 
 	processorsConfigBytes, err := os.ReadFile(*s.processorsConfig)
 	if err != nil {
@@ -1125,6 +1129,27 @@ func (s *server) registerPubSubProcessorMap(
 			processor.EvaluationCountEventPersisterName,
 			evaluationCountEventPersister,
 		)
+
+		// PostHog exporters. The client is owned here, not by a processor, so the
+		// evaluation and goal exporters can share one destination without either
+		// closing a client the other still uses. Absent config leaves it disabled.
+		postHogConfig, err := processor.ParsePostHogConfig(
+			processorsConfigMap[processor.PostHogEvaluationExporterName],
+		)
+		if err != nil {
+			return nil, nil, err
+		}
+		if postHogConfig.Enabled && postHogConfig.ExportEvaluations {
+			postHogClient, err := posthogintegration.NewClient(postHogConfig, logger)
+			if err != nil {
+				return nil, nil, err
+			}
+			postHogClients = append(postHogClients, postHogClient)
+			processors.RegisterProcessor(
+				processor.PostHogEvaluationExporterName,
+				processor.NewPostHogEvaluationExporter(postHogClient, postHogConfig, logger),
+			)
+		}
 
 		processors.RegisterProcessor(
 			processor.PushSenderName,
@@ -1270,7 +1295,19 @@ func (s *server) registerPubSubProcessorMap(
 		processors.RegisterProcessor(processor.GoalCountEventOPSPersisterName, goalEventsOPSPersister)
 	}
 
-	return processors, dwhCleanup, nil
+	cleanup := func() {
+		if dwhCleanup != nil {
+			dwhCleanup()
+		}
+		// Close is bounded by the SDK's ShutdownTimeout, so an unreachable PostHog
+		// cannot hang pod termination.
+		for _, c := range postHogClients {
+			if err := c.Close(); err != nil {
+				logger.Error("subscriber: failed to close PostHog client", zap.Error(err))
+			}
+		}
+	}
+	return processors, cleanup, nil
 }
 
 func (s *server) readEmailConfig(

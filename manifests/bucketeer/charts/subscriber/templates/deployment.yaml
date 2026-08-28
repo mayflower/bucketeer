@@ -54,6 +54,13 @@ spec:
         - name: subscriber-config
           configMap:
             name: {{ template "subscriber.fullname" . }}-subscribers-config
+        {{- if .Values.posthog.projectApiKeySecretName }}
+        # The PostHog project API key is mounted from an existing Secret. The chart
+        # never accepts the key as a value, so it cannot reach a ConfigMap.
+        - name: posthog-project-api-key
+          secret:
+            secretName: {{ .Values.posthog.projectApiKeySecretName }}
+        {{- end }}
       {{- if .Values.serviceAccount.annotations }}
       serviceAccountName: {{ template "subscriber.fullname" . }}
       {{- end }}
@@ -208,6 +215,11 @@ spec:
             - name: subscriber-config
               mountPath: /usr/local/conf
               readOnly: true
+            {{- if .Values.posthog.projectApiKeySecretName }}
+            - name: posthog-project-api-key
+              mountPath: /etc/bucketeer/posthog
+              readOnly: true
+            {{- end }}
           ports:
             - name: service
               containerPort: {{ .Values.env.port }}

@@ -385,3 +385,9 @@ onDemandProcessors:
         project: ""
         dataset: ""
         location: ""
+
+posthog:
+  # Name of an existing Secret holding the PostHog project API key. Leave empty to keep
+  # the exporters disabled. The key itself is never a chart value: put it in the Secret,
+  # under the key named by the processor config's projectApiKeyFile basename.
+  projectApiKeySecretName: ""
