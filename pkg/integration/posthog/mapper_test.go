@@ -15,6 +15,7 @@
 package posthog
 
 import (
+	"sort"
 	"testing"
 	"time"
 
@@ -291,4 +292,55 @@ func TestGroupMappingRefusesANonAllowlistedAttribute(t *testing.T) {
 	capture, err := MapEvaluationEvent(testEventID, testEnvID, e, privacy, nil)
 	require.NoError(t, err)
 	assert.Nil(t, capture.Groups)
+}
+
+func TestAttributeCapIsReportedUnderItsOwnReason(t *testing.T) {
+	t.Parallel()
+	// Reporting the count cap as value_too_long sends an operator to raise
+	// maxValueLength, which changes nothing.
+	e := evaluationEvent()
+	e.User = &userproto.User{Id: testUserID, Data: map[string]string{"a": "1", "b": "2", "c": "3"}}
+
+	var reasons []FilterReason
+	privacy := PrivacyConfig{UserAttributeAllowlist: []string{"a", "b", "c"}, MaxAttributes: 1}
+	_, err := MapEvaluationEvent(testEventID, testEnvID, e, privacy, func(r FilterReason) {
+		reasons = append(reasons, r)
+	})
+	require.NoError(t, err)
+
+	assert.Contains(t, reasons, FilterTooManyAttributes)
+	assert.NotContains(t, reasons, FilterValueTooLong)
+}
+
+func TestCappedAttributesAreTheSameOnEveryAttempt(t *testing.T) {
+	t.Parallel()
+	// A retry must produce the identical event, so which attributes survive the cap
+	// cannot depend on Go's map iteration order.
+	privacy := PrivacyConfig{
+		UserAttributeAllowlist: []string{"a", "b", "c", "d", "e", "f"},
+		MaxAttributes:          2,
+	}
+	data := map[string]string{"a": "1", "b": "2", "c": "3", "d": "4", "e": "5", "f": "6"}
+
+	var first []string
+	for attempt := 0; attempt < 25; attempt++ {
+		e := evaluationEvent()
+		e.User = &userproto.User{Id: testUserID, Data: data}
+		capture, err := MapEvaluationEvent(testEventID, testEnvID, e, privacy, nil)
+		require.NoError(t, err)
+
+		exported := []string{}
+		for key := range capture.Properties {
+			if len(key) > len(userAttributePrefix) && key[:len(userAttributePrefix)] == userAttributePrefix {
+				exported = append(exported, key)
+			}
+		}
+		sort.Strings(exported)
+		if first == nil {
+			first = exported
+			require.Len(t, first, 2)
+			continue
+		}
+		assert.Equal(t, first, exported, "the surviving attributes changed between attempts")
+	}
 }

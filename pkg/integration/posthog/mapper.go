@@ -16,6 +16,7 @@ package posthog
 
 import (
 	"errors"
+	"sort"
 	"time"
 
 	posthogsdk "github.com/posthog/posthog-go"
@@ -72,6 +73,7 @@ const (
 	FilterAttributeNotAllowlisted FilterReason = "attribute_not_allowlisted"
 	FilterMetadataNotAllowlisted  FilterReason = "metadata_not_allowlisted"
 	FilterValueTooLong            FilterReason = "value_too_long"
+	FilterTooManyAttributes       FilterReason = "too_many_attributes"
 	FilterReservedKey             FilterReason = "reserved_key"
 	FilterMissingGroupValue       FilterReason = "missing_group_value"
 )
@@ -208,7 +210,16 @@ func applyPrivacy(
 		if source == nil {
 			return
 		}
-		for key, value := range source {
+		// Sorted, so which attributes survive the count cap is the same on every attempt.
+		// Ranging the map directly would let a redelivery carry a different property set
+		// than the original, breaking the identical-retry guarantee above.
+		keys := make([]string, 0, len(source))
+		for key := range source {
+			keys = append(keys, key)
+		}
+		sort.Strings(keys)
+		for _, key := range keys {
+			value := source[key]
 			if !contains(allowlist, key) {
 				report(observe, notAllowed)
 				continue
@@ -223,7 +234,7 @@ func applyPrivacy(
 				continue
 			}
 			if added >= maxAttrs {
-				report(observe, FilterValueTooLong)
+				report(observe, FilterTooManyAttributes)
 				continue
 			}
 			props[name] = value
