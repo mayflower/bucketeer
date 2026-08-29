@@ -91,9 +91,15 @@ func (e *postHogExporter) run(ctx context.Context, msgChan <-chan *puller.Messag
 				batch = batch[:0]
 			}
 		case <-ctx.Done():
-			// Shutdown: resolve what is already in flight, then stop. Nothing is
-			// silently acked, because settle acks only on a success callback.
-			e.settle(ctx, batch)
+			// Shutdown: drain on a detached context with its own budget. Settling on the
+			// cancelled one makes every wait return immediately, so the batch is nacked
+			// and then delivered anyway by the client's flush on Close — a duplicate on
+			// every restart.
+			drainCtx, cancelDrain := context.WithTimeout(
+				context.WithoutCancel(ctx), e.config.ShutdownTimeout(),
+			)
+			e.settle(drainCtx, batch)
+			cancelDrain()
 			e.logger.Info("Context done, stopping")
 			return nil
 		}

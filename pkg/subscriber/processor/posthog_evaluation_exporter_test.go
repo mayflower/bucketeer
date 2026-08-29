@@ -23,6 +23,7 @@ import (
 	"os"
 	"path/filepath"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -314,4 +315,55 @@ func TestProcessStopsOnContextCancel(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 	assert.NoError(t, exporter.Process(ctx, make(chan *puller.Message)))
+}
+
+func TestShutdownDrainsInsteadOfNackingWhatItThenDelivers(t *testing.T) {
+	// On a cancelled context every wait returns immediately, so a batch would be nacked
+	// and then delivered anyway by the client's flush on Close — a duplicate on every
+	// rolling restart. The drain runs on a detached context so the ack is real.
+	//
+	// The batch size has to exceed the message count, or the loop settles on the live
+	// context before shutdown and the drain path is never reached.
+	var uploads int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		atomic.AddInt32(&uploads, 1)
+		w.WriteHeader(http.StatusOK)
+	}))
+	t.Cleanup(server.Close)
+
+	keyPath := filepath.Join(t.TempDir(), "key")
+	require.NoError(t, os.WriteFile(keyPath, []byte("phc_test_key"), 0o600))
+	config := &posthog.Config{
+		Enabled:               true,
+		Endpoint:              server.URL,
+		ProjectAPIKeyFile:     keyPath,
+		AllowInsecureEndpoint: true,
+		// Larger than the one message, so it is still batched when shutdown arrives.
+		BatchSize: 10,
+		// The SDK shares this interval, so it must stay realistic or the SDK never
+		// uploads the partial batch and the drain has nothing to wait for.
+		FlushIntervalSec:   1,
+		DeliveryTimeoutSec: 5,
+		ShutdownTimeoutSec: 5,
+	}
+	client, err := posthog.NewClient(config, zap.NewNop())
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = client.Close() })
+	exporter := NewPostHogEvaluationExporter(client, config, zap.NewNop()).(*postHogEvaluationExporter)
+
+	msg, state := evaluationMessage(t, postHogTestEventID)
+	msgChan := make(chan *puller.Message, 1)
+	msgChan <- msg
+
+	ctx, cancel := context.WithCancel(context.Background())
+	go func() {
+		time.Sleep(150 * time.Millisecond)
+		cancel()
+	}()
+	require.NoError(t, exporter.Process(ctx, msgChan))
+
+	acked, nacked := state.get()
+	assert.True(t, acked, "a drained message should be acked, not nacked and re-delivered")
+	assert.False(t, nacked)
+	assert.Positive(t, atomic.LoadInt32(&uploads))
 }
