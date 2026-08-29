@@ -23,6 +23,11 @@ import (
 
 // ParsePostHogConfig decodes the exporter's entry from the processors config file.
 //
+// One entry configures both exporters: they share a destination, a credential and a
+// privacy policy, and each is switched on by its own exportEvaluations / exportGoals flag.
+// There is deliberately no second entry for the goal exporter — a separate block would be
+// read by nothing, so an endpoint or allowlist set there would be silently ignored.
+//
 // A missing or empty entry yields a disabled exporter, which is how the integration
 // stays off until an operator configures it. A malformed entry is an error rather than a
 // silent default: an exporter that quietly does nothing is worse than a failed startup.

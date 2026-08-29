@@ -118,3 +118,40 @@ func TestPerEventErrorIsTerminal(t *testing.T) {
 	err := &posthogsdk.CaptureEventError{}
 	assert.Equal(t, ClassificationTerminal, Classify(err))
 }
+
+// legacyHTTPError mimics the SDK's unexported httpError, whose Error() is "<status> <text>".
+// The default capture mode reports every upload failure this way, so a classifier that only
+// matches the typed analytics-v1 errors treats a permanent rejection as retryable and the
+// broker redelivers it forever.
+type legacyHTTPError struct{ message string }
+
+func (e legacyHTTPError) Error() string { return e.message }
+
+func TestClassifyLegacyCaptureModeErrors(t *testing.T) {
+	t.Parallel()
+	patterns := []struct {
+		desc     string
+		message  string
+		expected Classification
+	}{
+		{"400 is terminal", "400 Bad Request", ClassificationTerminal},
+		{"413 is terminal", "413 Request Entity Too Large", ClassificationTerminal},
+		{"401 is retryable so a rotated key recovers", "401 Unauthorized", ClassificationRetryable},
+		{"429 is retryable", "429 Too Many Requests", ClassificationRetryable},
+		{"503 is retryable", "503 Service Unavailable", ClassificationRetryable},
+		{"a message with no status stays retryable", "connection reset", ClassificationRetryable},
+		{"a non-numeric prefix stays retryable", "err 400", ClassificationRetryable},
+	}
+	for _, p := range patterns {
+		t.Run(p.desc, func(t *testing.T) {
+			assert.Equal(t, p.expected, Classify(legacyHTTPError{message: p.message}), p.desc)
+		})
+	}
+}
+
+func TestOversizedMessageIsTerminal(t *testing.T) {
+	t.Parallel()
+	// The SDK refuses it before HTTP, identically on every attempt, so nacking would
+	// occupy the subscription forever.
+	assert.Equal(t, ClassificationTerminal, Classify(posthogsdk.ErrMessageTooBig))
+}

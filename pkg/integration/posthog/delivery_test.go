@@ -165,3 +165,38 @@ func TestUnknownAPIMessageIsIgnored(t *testing.T) {
 	tracker.Success(struct{}{})
 	assert.Equal(t, 0, tracker.Pending())
 }
+
+func TestTwoWaitersOnOneUUIDBothResolve(t *testing.T) {
+	t.Parallel()
+	// A redelivery can arrive while the first attempt is still settling. If the second
+	// registration replaced the first, the callback would reach neither and both messages
+	// would be nacked despite a successful delivery.
+	tracker := NewDeliveryTracker()
+	first, releaseFirst := tracker.Watch("uuid-a")
+	defer releaseFirst()
+	second, releaseSecond := tracker.Watch("uuid-a")
+	defer releaseSecond()
+
+	tracker.Success(posthogsdk.CaptureInApi{Uuid: "uuid-a"})
+
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	assert.NoError(t, Await(ctx, first))
+	assert.NoError(t, Await(ctx, second))
+}
+
+func TestReleasingOneWaiterLeavesTheOtherRegistered(t *testing.T) {
+	t.Parallel()
+	tracker := NewDeliveryTracker()
+	_, releaseFirst := tracker.Watch("uuid-a")
+	second, releaseSecond := tracker.Watch("uuid-a")
+	defer releaseSecond()
+
+	// The first gives up; the second must still be told the outcome.
+	releaseFirst()
+	tracker.Success(posthogsdk.CaptureInApi{Uuid: "uuid-a"})
+
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	assert.NoError(t, Await(ctx, second))
+}

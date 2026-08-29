@@ -36,12 +36,14 @@ type DeliveryResult struct {
 // Success and Failure must never block: both send on a buffered channel and fall through
 // if nobody is waiting, which happens whenever a processor already timed out.
 type DeliveryTracker struct {
-	mu      sync.Mutex
-	pending map[string]chan DeliveryResult
+	mu sync.Mutex
+	// Several waiters can share a UUID when an event is redelivered while its first
+	// attempt is still in flight; every one of them is told the outcome.
+	pending map[string][]chan DeliveryResult
 }
 
 func NewDeliveryTracker() *DeliveryTracker {
-	return &DeliveryTracker{pending: make(map[string]chan DeliveryResult)}
+	return &DeliveryTracker{pending: make(map[string][]chan DeliveryResult)}
 }
 
 // Watch registers interest in one UUID before it is enqueued. The returned function
@@ -50,11 +52,24 @@ func (t *DeliveryTracker) Watch(uuid string) (<-chan DeliveryResult, func()) {
 	// Buffered so a callback can complete even when the waiter has already given up.
 	ch := make(chan DeliveryResult, 1)
 	t.mu.Lock()
-	t.pending[uuid] = ch
+	// The same event can be in flight twice — a broker redelivery arriving while the first
+	// attempt is still settling. Registering blind would let the second overwrite the
+	// first, and the first's release would then delete the second's entry, so the callback
+	// would reach neither waiter and both messages would be nacked despite a delivery.
+	// Later waiters queue behind the first instead.
+	t.pending[uuid] = append(t.pending[uuid], ch)
 	t.mu.Unlock()
 	return ch, func() {
 		t.mu.Lock()
-		delete(t.pending, uuid)
+		for i, pending := range t.pending[uuid] {
+			if pending == ch {
+				t.pending[uuid] = append(t.pending[uuid][:i], t.pending[uuid][i+1:]...)
+				break
+			}
+		}
+		if len(t.pending[uuid]) == 0 {
+			delete(t.pending, uuid)
+		}
 		t.mu.Unlock()
 	}
 }
@@ -63,7 +78,11 @@ func (t *DeliveryTracker) Watch(uuid string) (<-chan DeliveryResult, func()) {
 func (t *DeliveryTracker) Pending() int {
 	t.mu.Lock()
 	defer t.mu.Unlock()
-	return len(t.pending)
+	total := 0
+	for _, waiters := range t.pending {
+		total += len(waiters)
+	}
+	return total
 }
 
 func (t *DeliveryTracker) Success(msg posthogsdk.APIMessage) {
@@ -79,18 +98,18 @@ func (t *DeliveryTracker) resolve(uuid string, err error) {
 		return
 	}
 	t.mu.Lock()
-	ch, ok := t.pending[uuid]
+	waiters := make([]chan DeliveryResult, len(t.pending[uuid]))
+	copy(waiters, t.pending[uuid])
 	t.mu.Unlock()
-	if !ok {
-		// The waiter timed out and released its registration, or the SDK delivered a
-		// callback twice. Either way there is nobody to tell, and dropping it here is
-		// what keeps a late callback from panicking on a closed channel.
-		return
-	}
-	select {
-	case ch <- DeliveryResult{UUID: uuid, Err: err}:
-	default:
-		// Already resolved; never block an SDK goroutine.
+	// No waiters means every one timed out and released, or the SDK delivered a callback
+	// twice. There is nobody to tell, and dropping it here is what keeps a late callback
+	// from blocking an SDK goroutine.
+	for _, ch := range waiters {
+		select {
+		case ch <- DeliveryResult{UUID: uuid, Err: err}:
+		default:
+			// Already resolved; never block an SDK goroutine.
+		}
 	}
 }
 

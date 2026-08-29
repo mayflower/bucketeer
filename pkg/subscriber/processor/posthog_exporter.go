@@ -145,10 +145,19 @@ func (e *postHogExporter) settle(ctx context.Context, batch []*pending) {
 	if len(batch) == 0 {
 		return
 	}
-	posthogInflightGauge.WithLabelValues(e.eventType).Set(float64(e.client.Pending()))
+	// This exporter's own backlog. Client.Pending() is shared with the other exporter, so
+	// reporting it under both event types would double-count and each series would carry
+	// the other's queue.
+	posthogInflightGauge.WithLabelValues(e.eventType).Set(float64(len(batch)))
+
+	// One deadline for the whole batch, not one per event: sequential per-event timeouts
+	// accumulate, so a batch whose callbacks never arrive would block the message loop for
+	// BatchSize x DeliveryTimeout while every other broker lease quietly expires.
+	batchCtx, cancel := context.WithTimeout(ctx, e.config.DeliveryTimeout())
+	defer cancel()
 
 	for _, p := range batch {
-		deliverErr := e.client.Wait(ctx, p.delivery)
+		deliverErr := e.client.Wait(batchCtx, p.delivery)
 		posthogDeliveryLatencyHistogram.WithLabelValues(e.eventType).
 			Observe(time.Since(p.start).Seconds())
 
@@ -179,7 +188,7 @@ func (e *postHogExporter) settle(ctx context.Context, batch []*pending) {
 			)
 		}
 	}
-	posthogInflightGauge.WithLabelValues(e.eventType).Set(float64(e.client.Pending()))
+	posthogInflightGauge.WithLabelValues(e.eventType).Set(0)
 }
 
 func (e *postHogExporter) drop(msg *puller.Message, id, reason string, err error) {
