@@ -15,7 +15,8 @@ export type InsightSourceId =
   | 'OPEN_FEATURE_GO'
   | 'OPEN_FEATURE_NODE'
   | 'OPEN_FEATURE_REACT'
-  | 'OPEN_FEATURE_REACT_NATIVE';
+  | 'OPEN_FEATURE_REACT_NATIVE'
+  | 'OPEN_FEATURE_OFREP';
 
 export type InsightApiId =
   | 'UNKNOWN_API'

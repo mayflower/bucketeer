@@ -562,6 +562,7 @@ const useOptions = () => {
       { label: 'OpenFeature Node', value: 'OPEN_FEATURE_NODE' },
       { label: 'OpenFeature React', value: 'OPEN_FEATURE_REACT' },
       { label: 'OpenFeature React Native', value: 'OPEN_FEATURE_REACT_NATIVE' },
+      { label: 'OpenFeature OFREP', value: 'OPEN_FEATURE_OFREP' },
       { label: 'Unknown', value: 'UNKNOWN' }
     ],
     [language]

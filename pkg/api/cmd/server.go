@@ -720,7 +720,10 @@ func (s *server) Run(ctx context.Context, metrics metrics.Metrics, logger *zap.L
 		mux *runtime.ServeMux,
 		opts []grpc.DialOption,
 	) error {
-		return gwproto.RegisterGatewayHandlerFromEndpoint(ctx, mux, grpcAddr, opts)
+		if err := gwproto.RegisterGatewayHandlerFromEndpoint(ctx, mux, grpcAddr, opts); err != nil {
+			return err
+		}
+		return service.RegisterOFREPHandlers(mux)
 	}
 
 	apiGateway, err := gateway.NewGateway(

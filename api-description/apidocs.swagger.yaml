@@ -6848,6 +6848,7 @@ definitions:
       - OPEN_FEATURE_NODE
       - OPEN_FEATURE_REACT
       - OPEN_FEATURE_REACT_NATIVE
+      - OPEN_FEATURE_OFREP
     default: UNKNOWN
   coderefCodeReference:
     type: object
