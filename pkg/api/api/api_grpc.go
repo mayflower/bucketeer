@@ -47,7 +47,6 @@ import (
 	"github.com/bucketeer-io/bucketeer/v2/pkg/metrics"
 	"github.com/bucketeer-io/bucketeer/v2/pkg/pubsub/publisher"
 	pushclient "github.com/bucketeer-io/bucketeer/v2/pkg/push/client"
-	"github.com/bucketeer-io/bucketeer/v2/pkg/rpc"
 	subscriptionclient "github.com/bucketeer-io/bucketeer/v2/pkg/subscription/client"
 	tagclient "github.com/bucketeer-io/bucketeer/v2/pkg/tag/client"
 	teamclient "github.com/bucketeer-io/bucketeer/v2/pkg/team/client"
@@ -286,7 +285,7 @@ func NewGrpcGatewayService(
 	ep publisher.Publisher,
 	redisV3Cache cache.MultiGetCache,
 	opts ...Option,
-) rpc.Service {
+) GrpcGatewayService {
 	options := defaultOptions
 	for _, opt := range opts {
 		opt(&options)

@@ -17861,6 +17861,10 @@
               {
                 "name": "OPEN_FEATURE_REACT_NATIVE",
                 "integer": 106
+              },
+              {
+                "name": "OPEN_FEATURE_OFREP",
+                "integer": 107
               }
             ],
             "reserved_ids": [

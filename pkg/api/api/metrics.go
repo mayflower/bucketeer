@@ -26,12 +26,14 @@ import (
 const (
 	callerGatewayService = "GatewayService"
 
-	methodGetEvaluations  = "GetEvaluations"
-	methodGetEvaluation   = "GetEvaluation"
-	methodRegisterEvents  = "RegisterEvents"
-	methodTrack           = "Track"
-	methodGetFeatureFlags = "GetFeatureFlags"
-	methodGetSegmentUsers = "GetSegmentUsers"
+	methodGetEvaluations     = "GetEvaluations"
+	methodGetEvaluation      = "GetEvaluation"
+	methodRegisterEvents     = "RegisterEvents"
+	methodTrack              = "Track"
+	methodGetFeatureFlags    = "GetFeatureFlags"
+	methodGetSegmentUsers    = "GetSegmentUsers"
+	methodOFREPEvaluateFlag  = "OFREPEvaluateFlag"
+	methodOFREPEvaluateFlags = "OFREPEvaluateFlags"
 
 	methodGetGoal    = "Goal"
 	methodListGoals  = "ListGoals"
