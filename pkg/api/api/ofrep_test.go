@@ -126,10 +126,18 @@ func TestOFREPTypedValue(t *testing.T) {
 		{name: "string", variationType: featureproto.Feature_STRING, input: "unchanged", expectedJSON: `"unchanged"`},
 		{name: "boolean", variationType: featureproto.Feature_BOOLEAN, input: "true", expectedJSON: `true`},
 		{name: "integer", variationType: featureproto.Feature_NUMBER, input: "9007199254740993", expectedJSON: `9007199254740993`},
+		{name: "signed integer", variationType: featureproto.Feature_NUMBER, input: "+1", expectedJSON: `1`},
+		{name: "signed large integer", variationType: featureproto.Feature_NUMBER, input: "+9007199254740993", expectedJSON: `9007199254740993`},
+		{name: "leading zero", variationType: featureproto.Feature_NUMBER, input: "01", expectedJSON: `1`},
+		{name: "leading decimal point", variationType: featureproto.Feature_NUMBER, input: ".5", expectedJSON: `0.5`},
+		{name: "trailing decimal point", variationType: featureproto.Feature_NUMBER, input: "1.", expectedJSON: `1.0`},
+		{name: "underscored integer", variationType: featureproto.Feature_NUMBER, input: "1_000", expectedJSON: `1000`},
+		{name: "hexadecimal float", variationType: featureproto.Feature_NUMBER, input: "0x1p2", expectedJSON: `4`},
 		{name: "fraction", variationType: featureproto.Feature_NUMBER, input: "12.50", expectedJSON: `12.50`},
 		{name: "object", variationType: featureproto.Feature_JSON, input: `{"count":9007199254740993}`, expectedJSON: `{"count":9007199254740993}`},
 		{name: "yaml converted by evaluator", variationType: featureproto.Feature_YAML, input: `{"tier":"pro"}`, expectedJSON: `{"tier":"pro"}`},
 		{name: "invalid boolean", variationType: featureproto.Feature_BOOLEAN, input: "yes", wantError: true},
+		{name: "null boolean", variationType: featureproto.Feature_BOOLEAN, input: "null", wantError: true},
 		{name: "NaN", variationType: featureproto.Feature_NUMBER, input: "NaN", wantError: true},
 		{name: "positive infinity", variationType: featureproto.Feature_NUMBER, input: "Inf", wantError: true},
 		{name: "negative infinity", variationType: featureproto.Feature_NUMBER, input: "-Inf", wantError: true},
@@ -152,9 +160,7 @@ func TestOFREPTypedValue(t *testing.T) {
 			actual, err := json.Marshal(value)
 			require.NoError(t, err)
 			assert.JSONEq(t, test.expectedJSON, string(actual))
-			if test.expectedJSON == `12.50` {
-				assert.Equal(t, test.expectedJSON, string(actual))
-			}
+			assert.Equal(t, test.expectedJSON, string(actual))
 		})
 	}
 }
@@ -272,6 +278,47 @@ func TestOFREPSingleEvaluationUsesSegmentsAndToleratesPublishFailure(t *testing.
 		"variant":"on",
 		"metadata":{"featureVersion":1,"bucketeerReason":"RULE","ruleId":"segment-rule"}
 	}`, response.Body.String())
+}
+
+func TestOFREPSingleEvaluationBoundsExposurePublishing(t *testing.T) {
+	controller := gomock.NewController(t)
+	service := newGrpcGatewayServiceWithMock(t, controller)
+	feature := newOFREPFeature("enabled-flag", featureproto.Feature_BOOLEAN, "enabled", "true")
+	expectOFREPAuth(service, ofrepTestAPIKey, accountproto.APIKey_SDK_SERVER, 1)
+	expectOFREPFeatures(service, []*featureproto.Feature{feature}, 1)
+	service.evaluationPublisher.(*publishermock.MockPublisher).EXPECT().Publish(
+		gomock.Any(), gomock.Any(),
+	).DoAndReturn(func(ctx context.Context, _ any) error {
+		deadline, ok := ctx.Deadline()
+		require.True(t, ok)
+		assert.LessOrEqual(t, time.Until(deadline), ofrepEvaluationPublishTimeout)
+		<-ctx.Done()
+		return ctx.Err()
+	})
+
+	response := performOFREPRequest(t, service, http.MethodPost,
+		"/ofrep/v1/evaluate/flags/enabled-flag", ofrepTestAPIKey,
+		`{"context":{"targetingKey":"user-1"}}`, "")
+
+	require.Equal(t, http.StatusOK, response.Code)
+	assert.Contains(t, response.Body.String(), `"value":true`)
+}
+
+func TestOFREPSingleIntegerResponseMatchesSchema(t *testing.T) {
+	controller := gomock.NewController(t)
+	service := newGrpcGatewayServiceWithMock(t, controller)
+	feature := newOFREPFeature("max-items", featureproto.Feature_NUMBER, "default", "42")
+	expectOFREPAuth(service, ofrepTestAPIKey, accountproto.APIKey_SDK_SERVER, 1)
+	expectOFREPFeatures(service, []*featureproto.Feature{feature}, 1)
+	service.evaluationPublisher.(*publishermock.MockPublisher).EXPECT().Publish(gomock.Any(), gomock.Any()).Return(nil)
+
+	response := performOFREPRequest(t, service, http.MethodPost,
+		"/ofrep/v1/evaluate/flags/max-items", ofrepTestAPIKey,
+		`{"context":{"targetingKey":"user-1"}}`, "")
+
+	require.Equal(t, http.StatusOK, response.Code)
+	assert.Contains(t, response.Body.String(), `"value":42`)
+	validateOFREPResponse(t, "serverEvaluationSuccess", response.Body.Bytes())
 }
 
 func TestOFREPSingleEvaluationUsesPrerequisites(t *testing.T) {
@@ -500,13 +547,81 @@ func TestOFREPAuthorizationMapsContextErrors(t *testing.T) {
 	}
 }
 
+func TestOFREPContextTerminationAfterAuthenticationIsNotInternalError(t *testing.T) {
+	tests := []struct {
+		name         string
+		newContext   func() (context.Context, func(), func())
+		code         codes.Code
+		errorDetails string
+	}{
+		{
+			name: "canceled",
+			newContext: func() (context.Context, func(), func()) {
+				ctx, cancel := context.WithCancel(context.Background())
+				return ctx, cancel, func() {}
+			},
+			code:         codes.Canceled,
+			errorDetails: "gateway: context canceled",
+		},
+		{
+			name: "deadline exceeded",
+			newContext: func() (context.Context, func(), func()) {
+				ctx, cancel := context.WithTimeout(context.Background(), 250*time.Millisecond)
+				return ctx, func() { <-ctx.Done() }, cancel
+			},
+			code:         codes.DeadlineExceeded,
+			errorDetails: "gateway: context deadline exceeded",
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			controller := gomock.NewController(t)
+			service := newGrpcGatewayServiceWithMock(t, controller)
+			expectOFREPAuth(service, ofrepTestAPIKey, accountproto.APIKey_SDK_SERVER, 1)
+			started := make(chan struct{})
+			release := make(chan struct{})
+			fetchDone := make(chan struct{})
+			service.featuresCache.(*cachev3mock.MockFeaturesCache).EXPECT().Get(ofrepTestEnvironmentID).DoAndReturn(
+				func(string) (*featureproto.Features, error) {
+					close(started)
+					<-release
+					close(fetchDone)
+					return &featureproto.Features{}, nil
+				},
+			)
+
+			ctx, terminate, cleanup := test.newContext()
+			defer cleanup()
+			request := httptest.NewRequest(http.MethodPost, "/ofrep/v1/evaluate/flags/flag",
+				strings.NewReader(`{"context":{"targetingKey":"user-1"}}`)).WithContext(ctx)
+			request.Header.Set("Authorization", ofrepTestAPIKey)
+			response := httptest.NewRecorder()
+			mux := runtimeServeMux(t, service)
+			done := make(chan struct{})
+			go func() {
+				mux.ServeHTTP(response, request)
+				close(done)
+			}()
+
+			<-started
+			terminate()
+			<-done
+			close(release)
+			<-fetchDone
+
+			assert.Equal(t, runtime.HTTPStatusFromCode(test.code), response.Code)
+			assert.JSONEq(t, fmt.Sprintf(`{"errorDetails":%q}`, test.errorDetails), response.Body.String())
+		})
+	}
+}
+
 func TestOFREPBulkEvaluationIsSortedAndConditional(t *testing.T) {
 	controller := gomock.NewController(t)
 	service := newGrpcGatewayServiceWithMock(t, controller)
 	features := []*featureproto.Feature{
 		newOFREPFeature("z-object", featureproto.Feature_JSON, "object", `{"tier":"pro"}`),
 		newOFREPFeature("y-yaml", featureproto.Feature_YAML, "yaml", "tier: pro"),
-		newOFREPFeature("a-number", featureproto.Feature_NUMBER, "number", "12.50"),
+		newOFREPFeature("a-number", featureproto.Feature_NUMBER, "number", "42"),
 		newOFREPFeature("m-bool", featureproto.Feature_BOOLEAN, "boolean", "true"),
 		{Id: "archived", Archived: true},
 	}
@@ -529,7 +644,7 @@ func TestOFREPBulkEvaluationIsSortedAndConditional(t *testing.T) {
 	validateOFREPResponse(t, "bulkEvaluationSuccess", first.Body.Bytes())
 
 	second := performOFREPRequest(t, service, http.MethodPost, ofrepBulkEvaluationPath, ofrepTestAPIKey,
-		`{"context":{"targetingKey":"user-1"}}`, `"unrelated", `+etag)
+		`{"context":{"targetingKey":"user-1"}}`, `"unrelated", W/`+etag)
 	assert.Equal(t, http.StatusNotModified, second.Code)
 	assert.Empty(t, second.Body.String())
 	assert.Equal(t, etag, second.Header().Get("ETag"))
@@ -608,6 +723,7 @@ func TestOFREPResponseSchemas(t *testing.T) {
 		{name: "evaluation failure", schemaName: "evaluationFailure", body: `{"key":"flag","errorCode":"PARSE_ERROR","errorDetails":"invalid value"}`},
 		{name: "bulk failure", schemaName: "bulkEvaluationFailure", body: `{"errorCode":"INVALID_CONTEXT","errorDetails":"invalid context"}`},
 		{name: "general error", schemaName: "generalErrorResponse", body: `{"errorDetails":"internal error"}`},
+		{name: "integer success", schemaName: "serverEvaluationSuccess", body: `{"key":"max-items","value":42,"reason":"STATIC"}`},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -621,7 +737,8 @@ func TestOFREPETagMatches(t *testing.T) {
 	t.Parallel()
 	assert.True(t, ofrepETagMatches(`"one", "two"`, `"two"`))
 	assert.True(t, ofrepETagMatches(`*`, `"two"`))
-	assert.False(t, ofrepETagMatches(`W/"two"`, `"two"`))
+	assert.True(t, ofrepETagMatches(`W/"two"`, `"two"`))
+	assert.True(t, ofrepETagMatches(`"two"`, `W/"two"`))
 	assert.False(t, ofrepETagMatches(`"one"`, `"two"`))
 }
 

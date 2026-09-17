@@ -9,9 +9,10 @@ info:
     protocol schema. It evaluates flags with Bucketeer's existing evaluator and
     requires an enabled SDK_SERVER API key.
 
-    Single evaluation records an exposure event. Bulk evaluation does not record
-    exposures or advertise event streams. Flag management, goal tracking, CORS,
-    retries, and rate limiting are outside this API.
+    Single evaluation makes a bounded, best-effort attempt to record an exposure
+    event. Bulk evaluation does not record exposures or advertise event streams.
+    Flag management, goal tracking, CORS, retries, and rate limiting are outside
+    this API.
 
     See https://openfeature.dev/docs/reference/other-technologies/ofrep/ and
     ../docs/ofrep.md for usage and implementation details.
@@ -338,8 +339,7 @@ components:
         - oneOf:
             - $ref: "#/components/schemas/booleanFlag"
             - $ref: "#/components/schemas/stringFlag"
-            - $ref: "#/components/schemas/integerFlag"
-            - $ref: "#/components/schemas/floatFlag"
+            - $ref: "#/components/schemas/numberFlag"
             - $ref: "#/components/schemas/objectFlag"
     evaluationFailure:
       description: |
@@ -435,21 +435,12 @@ components:
           type: string
       required:
         - value
-    integerFlag:
-      description: An integer typed flag value.
-      type: object
-      properties:
-        value:
-          type: integer
-      required:
-        - value
-    floatFlag:
-      description: A float typed flag value.
+    numberFlag:
+      description: A numeric flag value, including integers and fractional values.
       type: object
       properties:
         value:
           type: number
-          format: float
       required:
         - value
     objectFlag:

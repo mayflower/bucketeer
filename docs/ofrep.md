@@ -2,7 +2,7 @@
 
 Bucketeer implements OFREP 0.3 for vendor-neutral, server-side feature evaluation, including applications written in languages without a Bucketeer SDK. The base URL is the host of the API gRPC-gateway listener, not the Console or SPA host and not the legacy `/v1/gateway` path.
 
-- `POST /ofrep/v1/evaluate/flags/{key}` evaluates one flag and records one evaluation event.
+- `POST /ofrep/v1/evaluate/flags/{key}` evaluates one flag and makes a best-effort attempt to record one evaluation event without letting event transport delays hold the response indefinitely.
 - `POST /ofrep/v1/evaluate/flags` evaluates every active flag with one shared context. It does not record evaluation events.
 
 Both endpoints require an enabled Bucketeer `SDK_SERVER` API key. The standard OFREP forms are `X-API-Key: <key>` and `Authorization: Bearer <key>`. Bucketeer's existing raw `Authorization: <key>` form remains supported for compatibility. If multiple forms are supplied, they must identify the same key. Client SDK keys, public API keys, invalid keys, disabled keys, and keys for disabled environments are rejected. These endpoints are intended for trusted server applications; do not expose server keys in browsers or mobile applications.

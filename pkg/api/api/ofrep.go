@@ -22,6 +22,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"net/http"
 	"sort"
 	"strconv"
@@ -69,6 +70,7 @@ const (
 	ofrepInternalErrorDetails     = "An internal server error occurred while processing the request"
 	ofrepSingleEvaluationSpan     = "bucketeerGRPCGatewayService.OFREPEvaluateFlag"
 	ofrepBulkEvaluationSpan       = "bucketeerGRPCGatewayService.OFREPEvaluateFlags"
+	ofrepEvaluationPublishTimeout = 250 * time.Millisecond
 )
 
 type ofrepEvaluationRequest struct {
@@ -393,7 +395,7 @@ func (s *grpcGatewayService) loadOFREPFeatures(
 	})
 	if err != nil {
 		if isCallerContextErr(err) {
-			return nil, status.FromContextError(ctx.Err()).Err()
+			return nil, translateCallerCanceledErr(ctx, err)
 		}
 		return nil, err
 	}
@@ -511,29 +513,16 @@ func ofrepTypedValue(variationType featureproto.Feature_VariationType, value str
 	case featureproto.Feature_STRING:
 		return value, nil
 	case featureproto.Feature_BOOLEAN:
-		var boolean bool
-		if err := json.Unmarshal([]byte(value), &boolean); err != nil {
-			return nil, fmt.Errorf("invalid boolean variation: %w", err)
+		switch value {
+		case "true":
+			return true, nil
+		case "false":
+			return false, nil
+		default:
+			return nil, errors.New("invalid boolean variation")
 		}
-		return boolean, nil
 	case featureproto.Feature_NUMBER:
-		decoder := json.NewDecoder(strings.NewReader(value))
-		decoder.UseNumber()
-		var number any
-		if err := decoder.Decode(&number); err != nil {
-			return nil, fmt.Errorf("invalid number variation: %w", err)
-		}
-		if err := ensureOFREPEOF(decoder); err != nil {
-			return nil, fmt.Errorf("invalid number variation: %w", err)
-		}
-		jsonNumber, ok := number.(json.Number)
-		if !ok {
-			return nil, errors.New("invalid number variation")
-		}
-		if _, err := strconv.ParseFloat(jsonNumber.String(), 64); err != nil {
-			return nil, fmt.Errorf("invalid number variation: %w", err)
-		}
-		return jsonNumber, nil
+		return ofrepNumber(value)
 	case featureproto.Feature_JSON, featureproto.Feature_YAML:
 		decoder := json.NewDecoder(strings.NewReader(value))
 		decoder.UseNumber()
@@ -548,6 +537,80 @@ func ofrepTypedValue(variationType featureproto.Feature_VariationType, value str
 	default:
 		return nil, errors.New("unknown variation type")
 	}
+}
+
+func ofrepNumber(value string) (json.Number, error) {
+	parsed, err := strconv.ParseFloat(value, 64)
+	if err != nil || math.IsNaN(parsed) || math.IsInf(parsed, 0) {
+		return "", errors.New("invalid number variation")
+	}
+	if number, ok := parseOFREPJSONNumber(value); ok {
+		return number, nil
+	}
+	if normalized, ok := normalizeOFREPDecimal(value); ok {
+		if number, ok := parseOFREPJSONNumber(normalized); ok {
+			return number, nil
+		}
+	}
+	// ParseFloat also accepts hexadecimal floating-point syntax. JSON does not,
+	// so emit its finite numeric value using a valid JSON representation.
+	return json.Number(strconv.FormatFloat(parsed, 'g', -1, 64)), nil
+}
+
+func parseOFREPJSONNumber(value string) (json.Number, bool) {
+	decoder := json.NewDecoder(strings.NewReader(value))
+	decoder.UseNumber()
+	var decoded any
+	if err := decoder.Decode(&decoded); err != nil {
+		return "", false
+	}
+	if err := ensureOFREPEOF(decoder); err != nil {
+		return "", false
+	}
+	number, ok := decoded.(json.Number)
+	return number, ok
+}
+
+// normalizeOFREPDecimal converts the additional finite decimal syntax accepted
+// by strconv.ParseFloat into JSON number syntax without passing through float64.
+func normalizeOFREPDecimal(value string) (string, bool) {
+	value = strings.ReplaceAll(value, "_", "")
+	sign := ""
+	if strings.HasPrefix(value, "+") || strings.HasPrefix(value, "-") {
+		sign = value[:1]
+		value = value[1:]
+	}
+	if strings.HasPrefix(strings.ToLower(value), "0x") {
+		return "", false
+	}
+	if sign == "+" {
+		sign = ""
+	}
+
+	mantissa := value
+	exponent := ""
+	if index := strings.IndexAny(value, "eE"); index >= 0 {
+		mantissa = value[:index]
+		exponent = value[index:]
+	}
+	if strings.HasPrefix(mantissa, ".") {
+		mantissa = "0" + mantissa
+	}
+	if strings.HasSuffix(mantissa, ".") {
+		mantissa += "0"
+	}
+
+	integer := mantissa
+	fraction := ""
+	if index := strings.IndexByte(mantissa, '.'); index >= 0 {
+		integer = mantissa[:index]
+		fraction = mantissa[index:]
+	}
+	integer = strings.TrimLeft(integer, "0")
+	if integer == "" {
+		integer = "0"
+	}
+	return sign + integer + fraction + exponent, true
 }
 
 func ofrepReason(feature *featureproto.Feature, reason *featureproto.Reason) string {
@@ -610,7 +673,9 @@ func (s *grpcGatewayService) publishOFREPEvaluationEvent(
 		return
 	}
 	eventID := id.String()
-	err = s.evaluationPublisher.Publish(ctx, &eventproto.Event{
+	publishCtx, cancel := context.WithTimeout(ctx, ofrepEvaluationPublishTimeout)
+	defer cancel()
+	err = s.evaluationPublisher.Publish(publishCtx, &eventproto.Event{
 		Id:            eventID,
 		Event:         wrapped,
 		EnvironmentId: environmentID,
@@ -673,6 +738,13 @@ func (s *grpcGatewayService) writeOFREPInternalError(
 	method string,
 	err error,
 ) {
+	if contextErr := ctxAlreadyDoneErr(ctx); contextErr != nil {
+		grpcStatus := status.Convert(contextErr)
+		writeOFREPJSON(w, runtime.HTTPStatusFromCode(grpcStatus.Code()), ofrepGeneralErrorResponse{
+			ErrorDetails: grpcStatus.Message(),
+		})
+		return
+	}
 	apiErrorCounter.WithLabelValues(
 		envAPIKey.Environment.Id,
 		eventproto.SourceId_OPEN_FEATURE_OFREP.String(),
@@ -698,9 +770,10 @@ func writeOFREPJSON(w http.ResponseWriter, statusCode int, response any) {
 }
 
 func ofrepETagMatches(header, etag string) bool {
+	etag = strings.TrimPrefix(etag, "W/")
 	for _, candidate := range strings.Split(header, ",") {
 		candidate = strings.TrimSpace(candidate)
-		if candidate == "*" || candidate == etag {
+		if candidate == "*" || strings.TrimPrefix(candidate, "W/") == etag {
 			return true
 		}
 	}
