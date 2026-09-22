@@ -6551,6 +6551,7 @@ paths:
               - OPEN_FEATURE_NODE
               - OPEN_FEATURE_REACT
               - OPEN_FEATURE_REACT_NATIVE
+              - OPEN_FEATURE_OFREP
           collectionFormat: multi
         - name: apiIds
           in: query
@@ -6652,6 +6653,7 @@ paths:
               - OPEN_FEATURE_NODE
               - OPEN_FEATURE_REACT
               - OPEN_FEATURE_REACT_NATIVE
+              - OPEN_FEATURE_OFREP
           collectionFormat: multi
         - name: apiIds
           in: query
@@ -6753,6 +6755,7 @@ paths:
               - OPEN_FEATURE_NODE
               - OPEN_FEATURE_REACT
               - OPEN_FEATURE_REACT_NATIVE
+              - OPEN_FEATURE_OFREP
           collectionFormat: multi
         - name: apiIds
           in: query
@@ -6854,6 +6857,7 @@ paths:
               - OPEN_FEATURE_NODE
               - OPEN_FEATURE_REACT
               - OPEN_FEATURE_REACT_NATIVE
+              - OPEN_FEATURE_OFREP
           collectionFormat: multi
       tags:
         - insights
@@ -6930,6 +6934,7 @@ paths:
               - OPEN_FEATURE_NODE
               - OPEN_FEATURE_REACT
               - OPEN_FEATURE_REACT_NATIVE
+              - OPEN_FEATURE_OFREP
           collectionFormat: multi
         - name: apiIds
           in: query
@@ -11497,6 +11502,7 @@ definitions:
       - OPEN_FEATURE_NODE
       - OPEN_FEATURE_REACT
       - OPEN_FEATURE_REACT_NATIVE
+      - OPEN_FEATURE_OFREP
     default: UNKNOWN
   coderefCodeReference:
     type: object
