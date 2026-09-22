@@ -19,6 +19,10 @@ on:
         description: "Skip release note"
         type: boolean
         default: true
+      publish_ghcr_only:
+        description: "Publish GitHub Container Registry images without GAR or deployment dispatch"
+        type: boolean
+        default: false
 
   push:
     branches:
@@ -34,7 +38,7 @@ on:
       - ".github/**"
 
 env:
-  GHCR_REGISTRY: ghcr.io/bucketeer-io
+  GHCR_REGISTRY: ghcr.io/${{ github.repository_owner }}
   GAR_REGISTRY: asia-docker.pkg.dev
   GO_BUILD_CONCURRENCY: 4 # Set the same number of apps to build.
   NODE_VERSION: "22.18.0"
@@ -47,7 +51,9 @@ jobs:
       IMAGE_TAG: ${{ steps.tag.outputs.value }}
       REF: ${{ steps.ref.outputs.value }}
       COMMIT_MESSAGE: ${{ steps.commit_message.outputs.value }}
-      MIGRATION_REQUIRED: ${{ steps.changes.outputs.migration }}
+      # A GHCR-only publish is consumed by a deployment that pins one tag for
+      # every image, so the migration images are always built for it.
+      MIGRATION_REQUIRED: ${{ inputs.publish_ghcr_only || steps.changes.outputs.migration == 'true' }}
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
         with:
@@ -118,7 +124,7 @@ jobs:
             docker build -f Dockerfile-app-$APP -t bucketeer-$IMAGE:${{ needs.setup.outputs.IMAGE_TAG }} --load .
           done
       - name: Build migration images
-        if:  ${{ needs.setup.outputs.MIGRATION_REQUIRED == 'true' }}
+        if: ${{ needs.setup.outputs.MIGRATION_REQUIRED == 'true' }}
         run: |
           docker build -f migration/Dockerfile migration/ -t bucketeer-migration:${{ needs.setup.outputs.IMAGE_TAG }} --load
           docker build -f migration/Dockerfile.postgres migration/ -t bucketeer-migration-postgres:${{ needs.setup.outputs.IMAGE_TAG }} --load
@@ -129,7 +135,7 @@ jobs:
           username: ${{ github.repository_owner }}
           password: ${{ secrets.GITHUB_TOKEN }}
       - name: Push migration images to GHCR
-        if:  ${{ needs.setup.outputs.MIGRATION_REQUIRED == 'true' }}
+        if: ${{ needs.setup.outputs.MIGRATION_REQUIRED == 'true' }}
         run: |
           docker tag bucketeer-migration:${{ needs.setup.outputs.IMAGE_TAG }} ${{ env.GHCR_REGISTRY }}/bucketeer-migration:${{ needs.setup.outputs.IMAGE_TAG }}
           docker push ${{ env.GHCR_REGISTRY }}/bucketeer-migration:${{ needs.setup.outputs.IMAGE_TAG }}
@@ -161,6 +167,7 @@ jobs:
           fi
           done
       - name: Authenticate to Google Cloud
+        if: ${{ !inputs.publish_ghcr_only }}
         id: auth
         uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3.0.0
         with:
@@ -168,19 +175,21 @@ jobs:
           workload_identity_provider: ${{ secrets.GAR_WORKLOAD_IDENTITY_PROVIDER }}
           service_account: ${{ secrets.GAR_SA_MAIL_ADDRESS }}
       - name: Login to GAR
+        if: ${{ !inputs.publish_ghcr_only }}
         uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3.7.0
         with:
           registry: ${{ env.GAR_REGISTRY }}
           username: oauth2accesstoken
           password: ${{ steps.auth.outputs.access_token }}
       - name: Push migration images to GAR
-        if:  ${{ needs.setup.outputs.MIGRATION_REQUIRED == 'true' }}
+        if: ${{ !inputs.publish_ghcr_only && needs.setup.outputs.MIGRATION_REQUIRED == 'true' }}
         run: |
           docker tag bucketeer-migration:${{ needs.setup.outputs.IMAGE_TAG }} ${{ env.GAR_REGISTRY }}/${{ secrets.GAR_PROJECT }}/bucketeer/bucketeer-migration:${{ needs.setup.outputs.IMAGE_TAG }}
           docker push ${{ env.GAR_REGISTRY }}/${{ secrets.GAR_PROJECT }}/bucketeer/bucketeer-migration:${{ needs.setup.outputs.IMAGE_TAG }}
           docker tag bucketeer-migration-postgres:${{ needs.setup.outputs.IMAGE_TAG }} ${{ env.GAR_REGISTRY }}/${{ secrets.GAR_PROJECT }}/bucketeer/bucketeer-migration-postgres:${{ needs.setup.outputs.IMAGE_TAG }}
           docker push ${{ env.GAR_REGISTRY }}/${{ secrets.GAR_PROJECT }}/bucketeer/bucketeer-migration-postgres:${{ needs.setup.outputs.IMAGE_TAG }}
       - name: Push go application images to GAR
+        if: ${{ !inputs.publish_ghcr_only }}
         run: |
           push_func(){
             IMAGE=`./tools/build/show-image-name.sh $1`
@@ -208,6 +217,7 @@ jobs:
 
   dispatch:
     needs: [setup, go]
+    if: ${{ !inputs.publish_ghcr_only }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
