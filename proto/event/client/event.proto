@@ -78,6 +78,7 @@ enum SourceId {
   OPEN_FEATURE_NODE = 104;
   OPEN_FEATURE_REACT = 105;
   OPEN_FEATURE_REACT_NATIVE = 106;
+  OPEN_FEATURE_OFREP = 107;
 }
 
 message MetricsEvent {

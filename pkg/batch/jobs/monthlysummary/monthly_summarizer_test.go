@@ -174,6 +174,7 @@ func TestListSourceIDs(t *testing.T) {
 		"OPEN_FEATURE_NODE",
 		"OPEN_FEATURE_REACT",
 		"OPEN_FEATURE_REACT_NATIVE",
+		"OPEN_FEATURE_OFREP",
 	}
 	assert.ElementsMatch(t, expected, ids)
 }
