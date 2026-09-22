@@ -720,7 +720,10 @@ func (s *server) Run(ctx context.Context, metrics metrics.Metrics, logger *zap.L
 		mux *runtime.ServeMux,
 		opts []grpc.DialOption,
 	) error {
-		return gwproto.RegisterGatewayHandlerFromEndpoint(ctx, mux, grpcAddr, opts)
+		if err := gwproto.RegisterGatewayHandlerFromEndpoint(ctx, mux, grpcAddr, opts); err != nil {
+			return err
+		}
+		return service.RegisterOFREPHandlers(mux)
 	}
 
 	apiGateway, err := gateway.NewGateway(
@@ -830,6 +833,10 @@ func (s *server) Run(ctx context.Context, metrics metrics.Metrics, logger *zap.L
 		if metricsPool, ok := service.(interface{ ShutdownMetricsPool() }); ok {
 			metricsPool.ShutdownMetricsPool()
 		}
+		// Publish queued OFREP exposures while the publisher is still open.
+		exposureCtx, cancelExposures := context.WithTimeout(context.Background(), grpcStopTimeout)
+		service.ShutdownOFREPExposures(exposureCtx)
+		cancelExposures()
 
 		// Close clients
 		// These are fast cleanup operations that can run asynchronously.

@@ -26,12 +26,14 @@ import (
 const (
 	callerGatewayService = "GatewayService"
 
-	methodGetEvaluations  = "GetEvaluations"
-	methodGetEvaluation   = "GetEvaluation"
-	methodRegisterEvents  = "RegisterEvents"
-	methodTrack           = "Track"
-	methodGetFeatureFlags = "GetFeatureFlags"
-	methodGetSegmentUsers = "GetSegmentUsers"
+	methodGetEvaluations     = "GetEvaluations"
+	methodGetEvaluation      = "GetEvaluation"
+	methodRegisterEvents     = "RegisterEvents"
+	methodTrack              = "Track"
+	methodGetFeatureFlags    = "GetFeatureFlags"
+	methodGetSegmentUsers    = "GetSegmentUsers"
+	methodOFREPEvaluateFlag  = "OFREPEvaluateFlag"
+	methodOFREPEvaluateFlags = "OFREPEvaluateFlags"
 
 	methodGetGoal    = "Goal"
 	methodListGoals  = "ListGoals"
@@ -207,6 +209,14 @@ var (
 				"(not lost); sustained rates during normal operation indicate the pool " +
 				"is undersized for current load.",
 		})
+	ofrepExposureDroppedCounter = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Namespace: "bucketeer",
+			Subsystem: "gateway",
+			Name:      "api_ofrep_exposure_dropped_total",
+			Help: "Total number of OFREP exposure events discarded before a publication " +
+				"attempt, by reason: queue_full, queue_closed, or shutdown.",
+		}, []string{"reason"})
 	evaluationsCounter = prometheus.NewCounterVec(
 		prometheus.CounterOpts{
 			Namespace: "bucketeer",
@@ -362,6 +372,7 @@ func registerMetrics(r metrics.Registerer) {
 			metricsQueueDepthGauge,
 			metricsWorkerPanicCounter,
 			metricsOverflowCounter,
+			ofrepExposureDroppedCounter,
 			evaluationsCounter,
 			getFeatureFlagsCounter,
 			getSegmentUsersCounter,

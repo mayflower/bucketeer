@@ -26,3 +26,5 @@ docker-compose/logs/
 hack/delete-mysql-data-warehouse/delete-mysql-data-warehouse
 hack/delete-redis-retry-keys/delete-redis-retry-keys
 hack/create-e2e-accounts/create-e2e-accounts
+__pycache__/
+*.pyc

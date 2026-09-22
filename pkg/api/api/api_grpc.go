@@ -47,7 +47,6 @@ import (
 	"github.com/bucketeer-io/bucketeer/v2/pkg/metrics"
 	"github.com/bucketeer-io/bucketeer/v2/pkg/pubsub/publisher"
 	pushclient "github.com/bucketeer-io/bucketeer/v2/pkg/push/client"
-	"github.com/bucketeer-io/bucketeer/v2/pkg/rpc"
 	subscriptionclient "github.com/bucketeer-io/bucketeer/v2/pkg/subscription/client"
 	tagclient "github.com/bucketeer-io/bucketeer/v2/pkg/tag/client"
 	teamclient "github.com/bucketeer-io/bucketeer/v2/pkg/team/client"
@@ -263,6 +262,7 @@ type grpcGatewayService struct {
 	metricsPoolMu               sync.RWMutex
 	metricsPoolClosed           bool
 	metricsJobProcessor         func(metricsJob)
+	ofrepExposures              *ofrepExposureQueue
 	opts                        *options
 	logger                      *zap.Logger
 }
@@ -286,7 +286,7 @@ func NewGrpcGatewayService(
 	ep publisher.Publisher,
 	redisV3Cache cache.MultiGetCache,
 	opts ...Option,
-) rpc.Service {
+) GrpcGatewayService {
 	options := defaultOptions
 	for _, opt := range opts {
 		opt(&options)
@@ -328,6 +328,7 @@ func NewGrpcGatewayService(
 	}
 
 	s.startMetricsWorkers(options.metricsWorkers, options.metricsQueueSize)
+	s.startOFREPExposureWorkers(ofrepExposureWorkers, ofrepExposureQueueSize)
 	go s.writeAPIKeyLastUsedAtCacheToDatabase(ctx)
 
 	return s
