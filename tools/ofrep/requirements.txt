@@ -1,0 +1,1 @@
+openfeature-provider-ofrep==0.3.0
