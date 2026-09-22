@@ -121,8 +121,10 @@ jobs:
             IMAGE=`./tools/build/show-image-name.sh $APP`
             docker build -f Dockerfile-app-$APP -t bucketeer-$IMAGE:${{ needs.setup.outputs.IMAGE_TAG }} --load .
           done
+      # A GHCR-only publish is consumed by a deployment that pins one tag for
+      # every image, so the migration images are always built for it.
       - name: Build migration images
-        if:  ${{ needs.setup.outputs.MIGRATION_REQUIRED == 'true' }}
+        if: ${{ inputs.publish_ghcr_only || needs.setup.outputs.MIGRATION_REQUIRED == 'true' }}
         run: |
           docker build -f migration/Dockerfile migration/ -t bucketeer-migration:${{ needs.setup.outputs.IMAGE_TAG }} --load
           docker build -f migration/Dockerfile.postgres migration/ -t bucketeer-migration-postgres:${{ needs.setup.outputs.IMAGE_TAG }} --load
@@ -133,7 +135,7 @@ jobs:
           username: ${{ github.repository_owner }}
           password: ${{ secrets.GITHUB_TOKEN }}
       - name: Push migration images to GHCR
-        if:  ${{ needs.setup.outputs.MIGRATION_REQUIRED == 'true' }}
+        if: ${{ inputs.publish_ghcr_only || needs.setup.outputs.MIGRATION_REQUIRED == 'true' }}
         run: |
           docker tag bucketeer-migration:${{ needs.setup.outputs.IMAGE_TAG }} ${{ env.GHCR_REGISTRY }}/bucketeer-migration:${{ needs.setup.outputs.IMAGE_TAG }}
           docker push ${{ env.GHCR_REGISTRY }}/bucketeer-migration:${{ needs.setup.outputs.IMAGE_TAG }}
