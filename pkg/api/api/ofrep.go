@@ -435,11 +435,14 @@ func (s *grpcGatewayService) evaluateOFREPFeatures(
 	features []*featureproto.Feature,
 	user *userproto.User,
 ) ([]*featureproto.Evaluation, error) {
-	segmentUsers, segments, err := s.getSegmentUsersMap(ctx, features, environmentID)
+	group := s.liveHoldoutGroup(ctx, environmentID)
+	segmentUsers, segments, err := s.getSegmentUsersMap(ctx, features, environmentID, group)
 	if err != nil {
 		return nil, err
 	}
-	evaluations, err := evaluation.NewEvaluator().EvaluateFeatures(features, user, segmentUsers, segments, "")
+	evaluations, err := evaluation.NewEvaluator().EvaluateFeatures(
+		features, user, segmentUsers, segments, "", holdoutGroups(group)...,
+	)
 	if err != nil {
 		return nil, err
 	}
