@@ -234,20 +234,6 @@ func TestOFREPSingleEvaluationPublishesExposure(t *testing.T) {
 	assert.Equal(t, ofrepVersion, evaluationEvent.SdkVersion)
 }
 
-func TestOFREPSingleEvaluationMapsCanonicalFlagKey(t *testing.T) {
-	service := newOFREPService(t)
-	feature := newOFREPFeature("retrieval-sources-v2", featureproto.Feature_BOOLEAN, "enabled", "true")
-	expectOFREPAuth(service, 1)
-	expectOFREPFeatures(service, []*featureproto.Feature{feature}, 1)
-	expectOFREPExposure(service, nil)
-
-	response := ofrepPost(t, service, "/ofrep/v1/evaluate/flags/retrieval.sources_v2",
-		`{"context":{"targetingKey":"user-1"}}`)
-	require.Equal(t, http.StatusOK, response.Code)
-	assert.Contains(t, response.Body.String(), `"key":"retrieval.sources_v2"`)
-	validateOFREPResponse(t, "serverEvaluationSuccess", response.Body.Bytes())
-}
-
 func TestOFREPSingleEvaluationUsesSegmentsAndToleratesPublishFailure(t *testing.T) {
 	service := newOFREPService(t)
 	feature := newOFREPFeature("segment-flag", featureproto.Feature_STRING, "off", "off")

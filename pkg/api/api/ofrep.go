@@ -149,7 +149,6 @@ func (s *grpcGatewayService) handleOFREPEvaluateFlag(
 	defer s.observeOFREPDuration(envAPIKey, methodOFREPEvaluateFlag, startTime)
 
 	key := pathParams["key"]
-	featureID := strings.NewReplacer(".", "-", "_", "-").Replace(key)
 	user, failure := decodeOFREPUser(http.MaxBytesReader(w, r.Body, ofrepMaxBodyBytes))
 	if failure != nil {
 		failure.Key = key
@@ -162,7 +161,7 @@ func (s *grpcGatewayService) handleOFREPEvaluateFlag(
 		s.writeOFREPInternalError(w, ctx, envAPIKey, methodOFREPEvaluateFlag, err)
 		return
 	}
-	feature, err := s.findFeature(features, featureID)
+	feature, err := s.findFeature(features, key)
 	if err != nil {
 		s.writeOFREPFailure(w, envAPIKey, methodOFREPEvaluateFlag, http.StatusNotFound, ofrepEvaluationFailure{
 			Key:          key,
@@ -171,7 +170,7 @@ func (s *grpcGatewayService) handleOFREPEvaluateFlag(
 		})
 		return
 	}
-	targetFeatures, err := s.getTargetFeatures(features, featureID)
+	targetFeatures, err := s.getTargetFeatures(features, key)
 	if err != nil {
 		s.writeOFREPInternalError(w, ctx, envAPIKey, methodOFREPEvaluateFlag, err)
 		return
@@ -181,7 +180,7 @@ func (s *grpcGatewayService) handleOFREPEvaluateFlag(
 		s.writeOFREPInternalError(w, ctx, envAPIKey, methodOFREPEvaluateFlag, err)
 		return
 	}
-	eval, err := s.findEvaluation(evaluations, featureID)
+	eval, err := s.findEvaluation(evaluations, key)
 	if err != nil {
 		s.writeOFREPInternalError(w, ctx, envAPIKey, methodOFREPEvaluateFlag, err)
 		return
@@ -195,7 +194,6 @@ func (s *grpcGatewayService) handleOFREPEvaluateFlag(
 		})
 		return
 	}
-	response.Key = key
 
 	// Exposure delivery is best effort and never delays the response.
 	if event, err := newOFREPExposureEvent(envAPIKey.Environment.Id, user, eval); err != nil {
