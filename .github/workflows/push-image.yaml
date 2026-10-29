@@ -81,6 +81,13 @@ jobs:
   go:
     needs: setup
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        arch: ${{ fromJSON(inputs.publish_ghcr_only && '["amd64","arm64"]' || '["amd64"]') }}
+    env:
+      GOOS: linux
+      GOARCH: ${{ matrix.arch }}
+      GHCR_TAG_SUFFIX: ${{ inputs.publish_ghcr_only && format('-{0}', matrix.arch) || '' }}
     permissions:
       contents: "read"
       id-token: "write"
@@ -119,15 +126,15 @@ jobs:
           for APP in `ls bin`
           do
             IMAGE=`./tools/build/show-image-name.sh $APP`
-            docker build -f Dockerfile-app-$APP -t bucketeer-$IMAGE:${{ needs.setup.outputs.IMAGE_TAG }} --load .
+            docker buildx build --platform linux/${{ matrix.arch }} -f Dockerfile-app-$APP -t bucketeer-$IMAGE:${{ needs.setup.outputs.IMAGE_TAG }} --load .
           done
       # A GHCR-only publish is consumed by a deployment that pins one tag for
       # every image, so the migration images are always built for it.
       - name: Build migration images
         if: ${{ inputs.publish_ghcr_only || needs.setup.outputs.MIGRATION_REQUIRED == 'true' }}
         run: |
-          docker build -f migration/Dockerfile migration/ -t bucketeer-migration:${{ needs.setup.outputs.IMAGE_TAG }} --load
-          docker build -f migration/Dockerfile.postgres migration/ -t bucketeer-migration-postgres:${{ needs.setup.outputs.IMAGE_TAG }} --load
+          docker buildx build --platform linux/${{ matrix.arch }} -f migration/Dockerfile migration/ -t bucketeer-migration:${{ needs.setup.outputs.IMAGE_TAG }} --load
+          docker buildx build --platform linux/${{ matrix.arch }} -f migration/Dockerfile.postgres migration/ -t bucketeer-migration-postgres:${{ needs.setup.outputs.IMAGE_TAG }} --load
       - name: Login to GHCR
         uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3.7.0
         with:
@@ -137,16 +144,16 @@ jobs:
       - name: Push migration images to GHCR
         if: ${{ inputs.publish_ghcr_only || needs.setup.outputs.MIGRATION_REQUIRED == 'true' }}
         run: |
-          docker tag bucketeer-migration:${{ needs.setup.outputs.IMAGE_TAG }} ${{ env.GHCR_REGISTRY }}/bucketeer-migration:${{ needs.setup.outputs.IMAGE_TAG }}
-          docker push ${{ env.GHCR_REGISTRY }}/bucketeer-migration:${{ needs.setup.outputs.IMAGE_TAG }}
-          docker tag bucketeer-migration-postgres:${{ needs.setup.outputs.IMAGE_TAG }} ${{ env.GHCR_REGISTRY }}/bucketeer-migration-postgres:${{ needs.setup.outputs.IMAGE_TAG }}
-          docker push ${{ env.GHCR_REGISTRY }}/bucketeer-migration-postgres:${{ needs.setup.outputs.IMAGE_TAG }}
+          docker tag bucketeer-migration:${{ needs.setup.outputs.IMAGE_TAG }} ${{ env.GHCR_REGISTRY }}/bucketeer-migration:${{ needs.setup.outputs.IMAGE_TAG }}${{ env.GHCR_TAG_SUFFIX }}
+          docker push ${{ env.GHCR_REGISTRY }}/bucketeer-migration:${{ needs.setup.outputs.IMAGE_TAG }}${{ env.GHCR_TAG_SUFFIX }}
+          docker tag bucketeer-migration-postgres:${{ needs.setup.outputs.IMAGE_TAG }} ${{ env.GHCR_REGISTRY }}/bucketeer-migration-postgres:${{ needs.setup.outputs.IMAGE_TAG }}${{ env.GHCR_TAG_SUFFIX }}
+          docker push ${{ env.GHCR_REGISTRY }}/bucketeer-migration-postgres:${{ needs.setup.outputs.IMAGE_TAG }}${{ env.GHCR_TAG_SUFFIX }}
       - name: Push go application images to GHCR
         run: |
           push_func(){
             IMAGE=`./tools/build/show-image-name.sh $1`
-            docker tag bucketeer-$IMAGE:${{ needs.setup.outputs.IMAGE_TAG }} ${{ env.GHCR_REGISTRY }}/bucketeer-$IMAGE:${{ needs.setup.outputs.IMAGE_TAG }}
-            docker push ${{ env.GHCR_REGISTRY }}/bucketeer-$IMAGE:${{ needs.setup.outputs.IMAGE_TAG }}
+            docker tag bucketeer-$IMAGE:${{ needs.setup.outputs.IMAGE_TAG }} ${{ env.GHCR_REGISTRY }}/bucketeer-$IMAGE:${{ needs.setup.outputs.IMAGE_TAG }}${{ env.GHCR_TAG_SUFFIX }}
+            docker push ${{ env.GHCR_REGISTRY }}/bucketeer-$IMAGE:${{ needs.setup.outputs.IMAGE_TAG }}${{ env.GHCR_TAG_SUFFIX }}
           }
           pids=()
           for APP in `ls bin`
@@ -214,6 +221,39 @@ jobs:
             exit "$exit_code"
           fi
           done
+
+  ghcr-manifests:
+    needs: [setup, go]
+    if: ${{ inputs.publish_ghcr_only }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+      - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3.6.1
+      - uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3.7.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.repository_owner }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Publish and verify multi-architecture image tags
+        run: |
+          set -euo pipefail
+          tag="${{ needs.setup.outputs.IMAGE_TAG }}"
+          publish_manifest() {
+            ref="${{ env.GHCR_REGISTRY }}/$1"
+            docker buildx imagetools create -t "$ref:$tag" "$ref:$tag-amd64" "$ref:$tag-arm64"
+            docker buildx imagetools inspect --raw "$ref:$tag" |
+              jq -e '[.manifests[].platform | select(.os == "linux") | .architecture] | unique == ["amd64", "arm64"]'
+          }
+          for app_dir in cmd/*; do
+            app="${app_dir##*/}"
+            image="$(./tools/build/show-image-name.sh "$app")"
+            publish_manifest "bucketeer-$image"
+          done
+          publish_manifest bucketeer-migration
+          publish_manifest bucketeer-migration-postgres
 
   dispatch:
     needs: [setup, go]
